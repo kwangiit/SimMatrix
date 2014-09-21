@@ -6,6 +6,7 @@
 /*
  * this class is the compute node of the distributed simulator
  */
+import java.util.*;
 
 public class ComputeNodeD
 {
@@ -13,10 +14,20 @@ public class ComputeNodeD
     int numCores;
     int numIdleCores;
     int[] neighId;
+    ArrayList<Long> waitTaskList;
+    ArrayList<Long> localReadyTaskList;
+    ArrayList<Long> sharedReadyTaskList;
+    ArrayList<Long> completeTaskList;
     int readyTaskListSize;  // ready queue size
     int numTaskDispatched;
     int numTaskFinished;
     double pollInterval;
+    
+    HashMap<Object, Object> kvsHM;
+    double kvsMaxProcTime, kvsMaxFwdTime;
+    
+    HashMap<String, String> dataHM;
+    double schedMaxProcTime, schedMaxFwdTime;
 
     public ComputeNodeD(int nodeId, int numCores, int numNeigh)
     {
