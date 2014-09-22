@@ -11,6 +11,7 @@ import java.io.*;
 
 public class Library {
 	public static int numComputeNode; // No. of Compute Nodes of the systems
+	public static int[] nodeId;
 	public static int numCorePerNode; // No. of cores per node
 	public static int numTaskPerCore;
 	public static String dagType;
@@ -21,10 +22,13 @@ public class Library {
 	public static double oneMsgCommTime;
 	public static double stealMsgCommTime;
 	public static double procTimePerTask; // The processing time per job
+	public static double procTimePerKVSRequest;
+	public static double packOverhead;
+	public static double unpackOverhead;
 
-	public static double taskSize; // Job description size
+	public static int oneMsgSize; // Job description size
 	public static double maxTaskLength;
-	public static long numAllTask; // Total no. of jobs
+	public static int numAllTask; // Total no. of jobs
 	public static boolean taskLog; // Log for each task or not
 	public static double logTimeInterval; // The interval to do logging
 	public static double visualTimeInterval;
@@ -81,6 +85,8 @@ public class Library {
 	public static long numMsg;
 	public static long numWorkStealing;
 	public static long numFailWorkStealing;
+	
+	public static int dataSizeThreshold;
 
 	/* write to the summary log */
 	public static void printSummaryLog(long readyTaskListSize) {
@@ -124,7 +130,12 @@ public class Library {
 		oldDeliveredTask = deliveredTask;
 	}
 	
-	public static double updateTime(double increment, double base, double cur) {
+	public static double getCommOverhead(int msgSize) {
+		return msgSize * 8.0 / (double) Library.linkSpeed + Library.netLat;
+	}
+	
+	public static double updateTime(double increment, double base) {
+		double cur = DistributedSimulator.getSimuTime();
 		if (cur > base)
 			base = cur;
 		base += increment;
@@ -139,6 +150,29 @@ public class Library {
 	
 	public static int hashServer(Object key) {
 		int hashCode = Math.abs(key.hashCode());
-		String server; =//
+		return Library.nodeId[hashCode % Library.numComputeNode];
+	}
+	
+	public static byte[] serialize(Object obj) {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try
+        {
+            ObjectOutputStream oos = new ObjectOutputStream(baos);
+            oos.writeObject(obj);
+        }
+        catch (IOException e)
+        {
+            e.printStackTrace();
+        }
+        return baos.toByteArray();		
+	}
+	
+	/* summary logging event processing */
+	public static void loggingEventProcess() {
+		Library.printSummaryLog(Library.waitQueueLength);
+		Event logging = new Event((byte) 0, -1, null, 
+				DistributedSimulator.getSimuTime() + Library.logTimeInterval,
+				-2, -2, Library.eventId++);
+		DistributedSimulator.add(logging);
 	}
 }

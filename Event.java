@@ -9,21 +9,23 @@
  */
 
 public class Event implements Comparable<Object> {
-	byte type;
-	long count;
-	String str;
+	String type;
+	int info;
+	int identity;
+	Object obj;
 	double occurTime;
 	int sourceId;
 	int destId;
 	long eventId;
-
-	public Event(byte type, long count, double occurTime, int sourceId,
-			String str, int destId, long eventId) {
+	
+	public Event(String type, int info, int identity, Object obj, 
+			double occurTime, int sourceId, int destId, long eventId) {
 		this.type = type;
-		this.count = count;
+		this.info = info;
+		this.identity = identity;
+		this.obj = obj;
 		this.occurTime = occurTime;
 		this.sourceId = sourceId;
-		this.str = str;
 		this.destId = destId;
 		this.eventId = eventId;
 	}

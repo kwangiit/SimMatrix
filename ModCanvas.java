@@ -66,7 +66,7 @@ public class ModCanvas extends JPanel
         {
             x = i % size;
             y = i / size;
-            load = ds.nodes[i].readyTaskListSize - ds.nodes[i].numIdleCores;
+            load = ds.nodes[i].readyTaskListSize - ds.nodes[i].numIdleCore;
             this.nodesColor[y][x] = load2Color(load, x, y);
         }
     }

@@ -17,7 +17,7 @@ public class DistributedSimulator {
 	private static TreeSet<Event> ts; // global event queue
 
 	Client client; // a client
-	ComputeNodeD[] nodes; // all the compute nodes
+	Scheduler[] nodes; // all the compute nodes
 
 	JFrame window; // the window to do visualization
 	ModCanvas canvas; // the canvas for painting
@@ -48,6 +48,9 @@ public class DistributedSimulator {
 	/* initialize the parameters from the library */
 	public void initLibrary(String[] args) {
 		Library.numComputeNode = Integer.parseInt(args[0]);
+		Library.nodeId = new int[Library.numComputeNode];
+		for (int i = 0; i < Library.numComputeNode; i++)
+			Library.nodeId[i] = i;
 		Library.numCorePerNode = Integer.parseInt(args[1]);
 		Library.numTaskPerCore = Integer.parseInt(args[2]);
 		Library.maxTaskLength = Double.parseDouble(args[3]);
@@ -56,15 +59,17 @@ public class DistributedSimulator {
 		
 		Library.linkSpeed = 6800000000.0; // b/sec
 		Library.netLat = 0.0001; // second
-		Library.taskSize = 1024.0; // Bytes
+		Library.oneMsgSize = 1024; // Bytes
+		Library.packOverhead = Library.unpackOverhead = 0.000005;
 
-		Library.oneMsgCommTime = (double) Library.taskSize * 8
-				/ (double) Library.linkSpeed + Library.netLat;
+		Library.oneMsgCommTime = Library.getCommOverhead(Library.oneMsgSize);
+		Library.procTimePerTask = 0.001;
+		Library.procTimePerKVSRequest = 0.001;
 
 		Library.numTaskToSubmit = 1000000;
 		Library.numTaskLowBd = 200000;
-		Library.numAllTask = (long) Library.numComputeNode
-				* (long) Library.numCorePerNode * (long) Library.numTaskPerCore;
+		Library.numAllTask = Library.numComputeNode * 
+				Library.numCorePerNode * Library.numTaskPerCore;
 		Library.taskLog = false;
 		Library.eventId = 0;
 		if (Library.numComputeNode == 1) {
@@ -132,14 +137,14 @@ public class DistributedSimulator {
 	public void initSimulation(String[] args) {
 		System.out.println("Initializing...");
 		initLibrary(args);
-		DistributedSimulator.setSimuTime(0);
+		DistributedSimulator.setSimuTime(0.0);
 		DistributedSimulator.ts = new TreeSet<Event>();
-		client = new Client(-1, Library.numAllTask, 0);
+		client = new Client(-1, Library.numAllTask);
 
 		/* initialize nodes */
-		nodes = new ComputeNodeD[Library.numComputeNode];
+		nodes = new Scheduler[Library.numComputeNode];
 		for (int i = 0; i < Library.numComputeNode; i++) {
-			nodes[i] = new ComputeNodeD(i, Library.numCorePerNode,
+			nodes[i] = new Scheduler(i, Library.numCorePerNode,
 					Library.numNeigh);
 		}
 
@@ -162,36 +167,27 @@ public class DistributedSimulator {
 	 * dispatched by the a neighbor in work stealing
 	 */
 	public void taskReceptionEventProcess(Event event) {
-		ComputeNodeD recvNode = nodes[event.destId];
-		recvNode.readyTaskListSize += event.count;
+		Scheduler recvNode = nodes[event.destId];
+		recvNode.readyTaskListSize += event.info;
 
 		/* if there are idle cores, then execute tasks */
-		if (recvNode.numIdleCores > 0) {
+		if (recvNode.numIdleCore > 0) {
 			recvNode.execute(DistributedSimulator.getSimuTime());
 		}
 		if (event.sourceId == -1) {
-			Library.waitQueueLength += event.count;
+			Library.waitQueueLength += event.info;
 			client.waitFlag = false;
 		}
 	}
 
-	/* summary logging event processing */
-	public void loggingEventProcess() {
-		Library.printSummaryLog(Library.waitQueueLength);
-		Event logging = new Event((byte) 1, -1,
-				DistributedSimulator.getSimuTime() + Library.logTimeInterval,
-				-2, -2, Library.eventId++);
-		DistributedSimulator.add(logging);
-	}
-
 	/* task end event processing */
 	public void taskEndEventProcess(Event event) {
-		ComputeNodeD curNode = nodes[event.sourceId];
-		curNode.numIdleCores++;
+		Scheduler curNode = nodes[event.sourceId];
+		curNode.numIdleCore++;
 		curNode.numTaskFinished++;
 		Library.numTaskFinished++;
 		Library.numBusyCore--;
-		if (curNode.nodeId == 0 && !client.waitFlag) {
+		if (curNode.id == 0 && !client.waitFlag) {
 			/*
 			 * if the number of waiting tasks of the first node is below the
 			 * predefined threshold and the client still has tasks, then the
@@ -219,18 +215,18 @@ public class DistributedSimulator {
 
 	/* do work stealing */
 	public void stealEventProcess(Event event) {
-		ComputeNodeD curNode = nodes[event.sourceId];
+		Scheduler curNode = nodes[event.sourceId];
 		// will chain with request or other steal events
 		curNode.askLoadInfo(nodes);
 	}
 
 	/* request task event processing */
 	public void taskDispatchEventProcess(Event event) {
-		ComputeNodeD curNode = nodes[event.destId];
+		Scheduler curNode = nodes[event.destId];
 
 		/* send have of the load */
 		int loadToSend = (int) Math
-				.floor((curNode.readyTaskListSize - curNode.numIdleCores) / 2);
+				.floor((curNode.readyTaskListSize - curNode.numIdleCore) / 2);
 
 		double latency = 0;
 		double msgSize = 0;
@@ -243,7 +239,7 @@ public class DistributedSimulator {
 
 			Event submission = new Event((byte) 0, loadToSend,
 					DistributedSimulator.getSimuTime() + latency,
-					curNode.nodeId, nodeToSend, Library.eventId++);
+					curNode.id, nodeToSend, Library.eventId++);
 			Library.numMsg++;
 			DistributedSimulator.add(submission);
 			curNode.readyTaskListSize -= loadToSend;
@@ -260,7 +256,7 @@ public class DistributedSimulator {
 					event.sourceId, -2, Library.eventId++);
 			DistributedSimulator.add(stealEvent);
 		}
-		if (curNode.nodeId == 0 && !client.waitFlag) {
+		if (curNode.id == 0 && !client.waitFlag) {
 			if (client.numLeftTasks > 0
 					&& curNode.readyTaskListSize < Library.numTaskLowBd) {
 				client.submitTaskToDispatcher(
@@ -323,33 +319,38 @@ public class DistributedSimulator {
 	}
 
 	public static void main(String[] args) throws InterruptedException {
-		if (args.length != 4) {
-			System.out
-					.println("Need three parameters: num_node, num_core_per_node, num_tasks_per_core, max task length");
+		if (args.length != 6) {
+			System.out.println("Need three parameters: num_node, num_core_per_node, "
+					+ "num_tasks_per_core, max_task_length, dag_type, data_para");
 			System.exit(1);
 		}
 		long start = System.currentTimeMillis();
 		DistributedSimulator ds = new DistributedSimulator();
 		ds.initSimulation(args);
 		// ds.initVisualization();
-
+		ds.client.genDagAdjlist(Library.dagType, Library.dagPara);
+		ds.client.genDagIndegree();
+		ds.client.insertTaskMetaToKVS(ds.nodes);
+		ds.client.splitTask(ds.nodes);
+		//ds.client.submitTaskToDispatcher(DistributedSimulator.getSimuTime(), 0, false);
+		
 		// at the beginning, add a logging event
-		Event logging = new Event((byte) 1, -1,
+		Event logging = new Event((byte) 0, -1, null, 
 				DistributedSimulator.getSimuTime(), -2, -2, Library.eventId++);
 		DistributedSimulator.add(logging);
-
-		// client submits tasks to the first node
-		ds.client.submitTaskToDispatcher(DistributedSimulator.getSimuTime(), 0,
-				false);
-
+		
 		/*
-		 * all other nodes wait some random time to do work stealing at the
-		 * beggining
+		 * first all the compute nodes check the waiting 
 		 */
-		for (int i = 1; i < Library.numComputeNode; i++) {
-			DistributedSimulator.add(new Event((byte) 3, -1,
-					DistributedSimulator.getSimuTime() + Math.random() * 0.001,
-					i, -2, Library.eventId++));
+		for (int i = 0; i < Library.numComputeNode; i++) {
+			ds.nodes[i].checkReadyTask();
+		}
+		
+		for (int i = 0; i < Library.numComputeNode; i++) {
+			DistributedSimulator.add(new Event((byte)3, -1, null, 
+					DistributedSimulator.getSimuTime() + Math.random() * 
+					0.001, i, -2, Library.eventId++));
+			ds.nodes[i].ws = true;
 		}
 		/*
 		 * DistributedSimulator.add(new Event((byte)5, -1,
@@ -362,13 +363,26 @@ public class DistributedSimulator {
 			event = DistributedSimulator.pollFirst();
 			DistributedSimulator.setSimuTime(event.occurTime);
 			switch (event.type) {
-			case 0:
-				ds.taskReceptionEventProcess(event);
+			/*
+			 * case 0: 
+			 * case 1:
+			 * case 2:
+			 * case 3:
+			 * case 4:
+			 * case 5:
+			 * case 6:
+			 * case 7:
+			 * case 8:
+			 * case 9:
+			 * case 10:
+			 */
+			case 0: // logging event
+				Library.loggingEventProcess();
 				break;
-			case 1:
-				ds.loggingEventProcess();
+			case 1: // checking for ready task
+				ds.nodes[event.destId].procCheckReadyTaskEvent(event);
 				break;
-			case 2:
+			case 2: // responding for checking task metadata
 				ds.taskEndEventProcess(event);
 				break;
 			case 3:

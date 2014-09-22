@@ -78,7 +78,7 @@ public class CentralSimulator
         Library.netLat = 0.0001;            // second
         Library.procTimePerTask = 0.001;    // second
 
-        Library.taskSize = 1024.0;    // Bytes
+        Library.oneMsgSize = 1024.0;    // Bytes
         Library.numAllTask = (long)Library.numComputeNode *
                 (long)Library.numCorePerNode * (long)Library.numTaskPerCore;
         Library.taskLog = false;    // log for each task or not
@@ -95,7 +95,7 @@ public class CentralSimulator
         Library.numTaskFinished = 0;
         Library.eventId = 0;
         
-        Library.oneMsgCommTime = (double)Library.taskSize * 8 /
+        Library.oneMsgCommTime = (double)Library.oneMsgSize * 8 /
                 (double)Library.linkSpeed + Library.netLat;
         try
         {

@@ -70,7 +70,7 @@ public class Dispatcher
     public double pushTime(int numTaskToDispatch)
     {
         double msgSize = 0;
-        msgSize = (double)Library.taskSize * (double)numTaskToDispatch;
+        msgSize = (double)Library.oneMsgSize * (double)numTaskToDispatch;
         return msgSize * 8 / Library.linkSpeed + Library.netLat;
     }
 
@@ -151,7 +151,7 @@ public class Dispatcher
                         advanceTime(event);
     			if (event.type == 0)
     			{
-                            submissionEventProcess(event.count);
+                            submissionEventProcess(event.info);
     			}
     			else
     			{
@@ -188,7 +188,7 @@ public class Dispatcher
     		advanceTime(event);
 		if (event.type == 0)
 		{
-                    submissionEventProcess(event.count);
+                    submissionEventProcess(event.info);
 		}
 		else
 		{
@@ -214,7 +214,7 @@ public class Dispatcher
                 advanceTime(event);
                 if (event.type == 0)
     		{
-                    submissionEventProcess(event.count);
+                    submissionEventProcess(event.info);
     		}
     		else if (event.type == 1)
     		{
