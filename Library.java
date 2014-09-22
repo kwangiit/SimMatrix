@@ -11,7 +11,7 @@ import java.io.*;
 
 public class Library {
 	public static int numComputeNode; // No. of Compute Nodes of the systems
-	public static int[] nodeId;
+	public static int[] nodeIdCollection;
 	public static int numCorePerNode; // No. of cores per node
 	public static int numTaskPerCore;
 	public static String dagType;
@@ -135,7 +135,7 @@ public class Library {
 	}
 	
 	public static double updateTime(double increment, double base) {
-		double cur = DistributedSimulator.getSimuTime();
+		double cur = SimMatrix.getSimuTime();
 		if (cur > base)
 			base = cur;
 		base += increment;
@@ -150,7 +150,7 @@ public class Library {
 	
 	public static int hashServer(Object key) {
 		int hashCode = Math.abs(key.hashCode());
-		return Library.nodeId[hashCode % Library.numComputeNode];
+		return Library.nodeIdCollection[hashCode % Library.numComputeNode];
 	}
 	
 	public static byte[] serialize(Object obj) {
@@ -170,9 +170,9 @@ public class Library {
 	/* summary logging event processing */
 	public static void loggingEventProcess() {
 		Library.printSummaryLog(Library.waitQueueLength);
-		Event logging = new Event((byte) 0, -1, null, 
-				DistributedSimulator.getSimuTime() + Library.logTimeInterval,
+		Message logging = new Message("logging", -1, null, null,
+				SimMatrix.getSimuTime() + Library.logTimeInterval,
 				-2, -2, Library.eventId++);
-		DistributedSimulator.add(logging);
+		SimMatrix.add(logging);
 	}
 }

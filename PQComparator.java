@@ -10,11 +10,3 @@ public class PQComparator implements Comparator<TaskDesc>{
 			return 0;
 	}
 }
-
-class TaskDesc {
-	int taskId;
-	String users;
-	String dir;
-	String cmd;
-	int dataLength;
-}

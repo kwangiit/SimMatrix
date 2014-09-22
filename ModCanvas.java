@@ -14,14 +14,14 @@ public class ModCanvas extends JPanel
 {
     private int size;
     private Color[][] nodesColor;
-    private DistributedSimulator ds;
+    private SimMatrix ds;
     private int pixSize;
     private int maxLoad;
     private int minLoad;
     private int loadInterval;
     private int windowSize;
     
-    public ModCanvas(int size, DistributedSimulator ds)
+    public ModCanvas(int size, SimMatrix ds)
     {
         this.size = size;
         this.ds = ds;
@@ -62,11 +62,11 @@ public class ModCanvas extends JPanel
     public void fillNodesColor()
     {
         int load,x,y;
-        for(int i = 0; i < ds.nodes.length; i++)
+        for(int i = 0; i < ds.schedulers.length; i++)
         {
             x = i % size;
             y = i / size;
-            load = ds.nodes[i].readyTaskListSize - ds.nodes[i].numIdleCore;
+            load = ds.schedulers[i].readyTaskListSize - ds.schedulers[i].numIdleCore;
             this.nodesColor[y][x] = load2Color(load, x, y);
         }
     }

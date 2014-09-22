@@ -85,7 +85,7 @@ public class Dispatcher
              * task length is generated with uniform random distribution ranging
              * from [0, Library.maxTaskLength)
              */
-            CentralSimulator.add(new Event((byte)2, -2, arriveTime + Math.random() * 
+            CentralSimulator.add(new Message((byte)2, -2, arriveTime + Math.random() * 
                                     Library.maxTaskLength + Library.oneMsgCommTime,
                                     recNode.nodeId, dispatcherId, Library.eventId++));
         }
@@ -98,7 +98,7 @@ public class Dispatcher
     }
 
     /* advance the simulation time to the current event's occurrence time*/
-    public void advanceTime(Event event)
+    public void advanceTime(Message event)
     {
     	CentralSimulator.setSimuTime(event.occurTime);
 	CentralSimulator.remove(event); // delete the first event
@@ -114,7 +114,7 @@ public class Dispatcher
     public void logEventProcess()
     {
         Library.printSummaryLog(readyTaskListSize);
-        Event logging = new Event((byte)1, 0, CentralSimulator.getSimuTime()
+        Message logging = new Message((byte)1, 0, CentralSimulator.getSimuTime()
                 + Library.logTimeInterval, -3, -3, Library.eventId++);
         if (Library.numTaskFinished != Library.numAllTask)
         {
@@ -139,7 +139,7 @@ public class Dispatcher
     	while(readyTaskListSize != 0 || !CentralSimulator.isEmpty())
     	{
             nextNodeToDispatch = findNextNodeToDispatch();
-            Event event = CentralSimulator.getFirst();
+            Message event = CentralSimulator.getFirst();
     		
             /* If all cores are busy */
             if (nextNodeToDispatch == -1)
@@ -228,11 +228,11 @@ public class Dispatcher
             }
             CentralSimulator.setSimuTime(nextSimuTime);
             doDispatch(nodes[nextNodeToDispatch], numTaskToDispatch);
-            if (readyTaskListSize == 0 && client.numLeftTasks == 0)
+            if (readyTaskListSize == 0 && client.numTask == 0)
             {
     		break;
             }
-            else if (readyTaskListSize < taskListSizeLowBd && client.numLeftTasks > 0)
+            else if (readyTaskListSize < taskListSizeLowBd && client.numTask > 0)
             {
     		client.submitTaskToDispatcher(CentralSimulator.getSimuTime(), dispatcherId, true);
             }
@@ -241,7 +241,7 @@ public class Dispatcher
         /* after client submits all the tasks */
     	while (!CentralSimulator.isEmpty())
     	{
-            Event event = CentralSimulator.pollFirst();
+            Message event = CentralSimulator.pollFirst();
             CentralSimulator.setSimuTime(event.occurTime);
             if(event.type == 1)
             {

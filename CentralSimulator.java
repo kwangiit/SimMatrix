@@ -13,7 +13,7 @@ import java.util.*;
 public class CentralSimulator 
 {
     private static double simuTime;          // simulation time
-    private static TreeSet<Event> ts;        // global event queue
+    private static TreeSet<Message> ts;        // global event queue
 
     Client client;   // a client
     Dispatcher dispatcher; // centralized dispatcher
@@ -32,12 +32,12 @@ public class CentralSimulator
         return CentralSimulator.simuTime;
     }
 
-    public static void add(Event event)
+    public static void add(Message event)
     {
         CentralSimulator.ts.add(event);
     }
 
-    public static Event getFirst()
+    public static Message getFirst()
     {
     	if (CentralSimulator.isEmpty())
     	{
@@ -46,7 +46,7 @@ public class CentralSimulator
     	return CentralSimulator.ts.first();
     }
     
-    public static void remove(Event event)
+    public static void remove(Message event)
     {
     	CentralSimulator.ts.remove(event);
     }
@@ -56,7 +56,7 @@ public class CentralSimulator
     	return CentralSimulator.ts.isEmpty();
     }
     
-    public static Event pollFirst()
+    public static Message pollFirst()
     {
     	return CentralSimulator.ts.pollFirst();
     }
@@ -145,7 +145,7 @@ public class CentralSimulator
         System.out.println("Initializing......");
         initLibrary(args);
         CentralSimulator.setSimuTime(0);
-        CentralSimulator.ts = new TreeSet<Event>();
+        CentralSimulator.ts = new TreeSet<Message>();
         client = new Client(-2, Library.numAllTask, 0);
         dispatcher = new Dispatcher(-1);
         nodes = new ComputeNode[Library.numComputeNode];
@@ -186,7 +186,7 @@ public class CentralSimulator
         cs.initSimulation(args);
 
         /* add first logging event at time 0 */
-        Event logging = new Event((byte)1, -1, CentralSimulator.getSimuTime(),
+        Message logging = new Message((byte)1, -1, CentralSimulator.getSimuTime(),
                                     -3, -3, Library.eventId++);
         CentralSimulator.add(logging);
 
