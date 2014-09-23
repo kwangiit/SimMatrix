@@ -27,6 +27,7 @@ public class Scheduler {
 	int maxLoad;
 	int maxLoadSchedIdx;
 	boolean ws;
+	boolean completeQueueBusy;
 
 	HashMap<Object, Object> kvsHM;
 	double kvsMaxProcTime, kvsMaxFwdTime;
@@ -303,19 +304,48 @@ public class Scheduler {
 		TaskDesc td = null;
 		if (localReadyTaskPQ.size() > 0) {
 			td = localReadyTaskPQ.poll();
-			
 		} else if (sharedReadyTaskPQ.size() > 0) {
 			td = sharedReadyTaskPQ.poll();
-		} else {
-			
+		} else if (!ws){
+			SimMatrix.add(new Message("work steal", -1, null, 
+					null, localTime, id, -2, Library.eventId++));
 		}
 		if (td != null) {
 			executeTask(td);
 		}
 	}
 	
+	public void updateChildMDSuc(KVSRetObj kvsRetObj) {
+		Task task = Library.globalTaskHM.get(kvsRetObj.identifier);
+		task.numChildMDUpdated++;
+		if (task.numChildMDUpdated < task.taskMD.children.size()) {
+			updateChildMetadata(task.taskMD.children.get(task.numChildMDUpdated), task.taskId);
+		}
+	}
+	
+	public void procChildMDRetEvent(KVSRetObj kvsRetObj) {
+		TaskMetaData childTaskMD = (TaskMetaData)kvsRetObj.value;
+		TaskMetaData childTaskMDAttempt = childTaskMD.copyTaskMetaData();
+		childTaskMDAttempt.indegree--;
+		childTaskMDAttempt.parent.add(id);
+		childTaskMDAttempt.dataNameList.add(kvsRetObj.identifier.toString());
+		childTaskMDAttempt.dataSize.add(1000000);
+		childTaskMDAttempt.allDataSize += 1000000;
+		Pair pair = new Pair(childTaskMD.taskId, childTaskMD, childTaskMDAttempt, 
+				kvsRetObj.identifier, "compare and swap", kvsRetObj.forWhat);
+		kvsClientInteract(pair);
+	}
+	
+	public void updateChildMetadata(int childTaskID, int taskID) {
+		Pair pair = new Pair(childTaskID, null, null, taskID, "lookup", "metadata:children task");
+		kvsClientInteract(pair);
+	}
+	
 	public void procNotifyChildRetEvent(KVSRetObj kvsRetObj) {
-		
+		TaskMetaData tm = (TaskMetaData)kvsRetObj.value;
+		if (tm.children.size() > 0) {
+			updateChildMetadata(tm.children.get(0), tm.taskId);
+		}
 	}
 	
 	public void notifyChildren(int taskId) {
@@ -328,7 +358,11 @@ public class Scheduler {
 		localTime += Math.random() * Library.maxTaskLength;
 		numIdleCore++;
 		tryExecAnotherTask();
-		notifyChildren(td.taskId);
+		if (!completeQueueBusy){
+			completeQueueBusy = true;
+			notifyChildren(td.taskId);
+		} else
+			completeTaskList.add(td.taskId);
 	}
 	
 	public String requestData(int taskId, int parentId, TaskDesc td, int dataSize, String dataName) {
@@ -352,6 +386,7 @@ public class Scheduler {
 		task.taskMD = taskMD;
 		task.numParentDataRecv = 0;
 		task.data = new String();
+		task.numChildMDUpdated = 0;
 		//Library.globalTaskHM.put(task.taskId, task);
 		int i = 0;
 		TaskDesc td = (TaskDesc)(kvsRetObj.identifier);

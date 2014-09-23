@@ -5,6 +5,7 @@ public class Task {
 	TaskMetaData taskMD;
 	int numParentDataRecv;
 	String data;
+	int numChildMDUpdated;
 }
 
 
@@ -81,6 +82,30 @@ class TaskMetaData {
 			return 1;
 		
 		return 0;
+	}
+	
+	TaskMetaData copyTaskMetaData() {
+		TaskMetaData taskMD = new TaskMetaData();
+		taskMD.taskId = taskId;
+		taskMD.indegree = indegree;
+		taskMD.parent = new ArrayList<Integer>();
+		for (int i = 0; i < parent.size(); i++) {
+			taskMD.parent.add(parent.get(i).intValue());
+		}
+		taskMD.children = new ArrayList<Integer>();
+		for (int i = 0; i < children.size(); i++) {
+			taskMD.children.add(children.get(i).intValue());
+		}
+		taskMD.dataNameList = new ArrayList<String>();
+		for (int i = 0; i < dataNameList.size(); i++) {
+			taskMD.dataNameList.add(dataNameList.get(i).substring(0));
+		}
+		taskMD.dataSize = new ArrayList<Integer>();
+		for (int i = 0; i < dataSize.size(); i++) {
+			taskMD.dataSize.add(dataSize.get(i).intValue());
+		}
+		taskMD.allDataSize = allDataSize;
+		return taskMD;
 	}
 }
 
