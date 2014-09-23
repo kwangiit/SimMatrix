@@ -342,6 +342,7 @@ public class SimMatrix {
 		 * first all the compute nodes check the waiting 
 		 */
 		for (int i = 0; i < Library.numComputeNode; i++) {
+			sm.schedulers[i].localTime = SimMatrix.getSimuTime() + Math.random() * 0.001;
 			sm.schedulers[i].checkReadyTask();
 		}
 		

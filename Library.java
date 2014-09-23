@@ -8,6 +8,7 @@
  */
 
 import java.io.*;
+import java.util.*;
 
 public class Library {
 	public static int numComputeNode; // No. of Compute Nodes of the systems
@@ -16,6 +17,7 @@ public class Library {
 	public static int numTaskPerCore;
 	public static String dagType;
 	public static int dagPara;
+	public static HashMap<Integer, Task> globalTaskHM;
 
 	public static double linkSpeed; // The network link speed
 	public static double netLat; // The network latency

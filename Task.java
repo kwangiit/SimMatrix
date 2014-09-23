@@ -1,7 +1,10 @@
 import java.util.*;
 
 public class Task {
-	
+	int taskId;
+	TaskMetaData taskMD;
+	int numParentDataRecv;
+	String data;
 }
 
 

@@ -32,7 +32,8 @@ public class Scheduler {
 	double kvsMaxProcTime, kvsMaxFwdTime;
 
 	HashMap<String, String> dataHM;
-	double schedMaxProcTime, schedMaxFwdTime;
+	double localTime;
+	//double schedMaxProcTime, schedMaxFwdTime;
 
 	int numTaskFinished;
 
@@ -52,7 +53,8 @@ public class Scheduler {
 		kvsHM = new HashMap<Object, Object>();
 		kvsMaxProcTime = kvsMaxFwdTime = 0.0;
 		dataHM = new HashMap<String, String>();
-		schedMaxProcTime = schedMaxFwdTime = 0.0;
+		localTime = 0.0;
+		//schedMaxProcTime = schedMaxFwdTime = 0.0;
 	}
 
 	/* select neighbors to do work stealing */
@@ -168,12 +170,13 @@ public class Scheduler {
 	}
 
 	public void kvsClientInteract(Pair pair) {
-		schedMaxFwdTime = Library.updateTime(Library.packOverhead,
-				schedMaxFwdTime);
+		//schedMaxFwdTime = Library.updateTime(Library.packOverhead,
+				//schedMaxFwdTime);
 		int destId = Library.hashServer(pair.key);
 		Message msg = new Message("kvs", 0, null, pair, 0, id, destId,
 				Library.eventId++);
-		sendMsg(msg, schedMaxFwdTime);
+		//sendMsg(msg, schedMaxFwdTime);
+		sendMsg(msg, localTime + Library.packOverhead);
 	}
 
 	public void checkReadyTask() {
@@ -227,7 +230,8 @@ public class Scheduler {
 	}
 	
 	public void procKVSRetEvent(Message msg) {
-		schedMaxFwdTime = Library.updateTime(Library.unpackOverhead, schedMaxFwdTime);
+		//schedMaxFwdTime = Library.updateTime(Library.unpackOverhead, schedMaxFwdTime);
+		localTime = SimMatrix.getSimuTime() + Library.unpackOverhead;
 		KVSRetObj kvsRetObj = (KVSRetObj)msg.obj;
 		if (!kvsRetObj.result) {
 			if (kvsRetObj.type.equals("compare and swap")) {
@@ -240,7 +244,9 @@ public class Scheduler {
 		} else {
 			if (kvsRetObj.type.equals("lookup")) {
 				if (kvsRetObj.forWhat.equals("metadata:check ready")) {
-					
+					procCheckReadyRetEvent(kvsRetObj);
+				} else if (kvsRetObj.forWhat.equals("metadata:execute task")) {
+					procExecuteTaskRetEvent(kvsRetObj);
 				}
 				//else if {
 					
@@ -249,27 +255,7 @@ public class Scheduler {
 		}
 	}
 	
-	public void procCheckReadyTaskEvent(Message event) {
-		kvsMaxFwdTime = Library.updateTime(Library.unpackOverhead,
-				kvsMaxFwdTime);
-		kvsMaxProcTime = Library.timeCompareOverried(kvsMaxProcTime,
-				kvsMaxFwdTime);
-		kvsMaxProcTime = Library.updateTime(Library.procTimePerKVSRequest,
-				kvsMaxProcTime);
-		Task taskMD = (Task) (kvsHM.get(event.obj));
-		Message resCheckReadyTask = new Message((byte) 2, event.info, taskMD,
-				0, id, event.sourceId, Library.eventId++);
-		kvsMaxFwdTime = Library.timeCompareOverried(kvsMaxFwdTime,
-				kvsMaxProcTime);
-		kvsMaxFwdTime = Library.updateTime(Library.packOverhead, kvsMaxFwdTime);
-		if (event.sourceId == event.destId) {
-			resCheckReadyTask.occurTime = kvsMaxFwdTime;
-			SimMatrix.add(resCheckReadyTask);
-		} else
-			sendMsg(resCheckReadyTask, kvsMaxFwdTime);
-	}
-
-	public int taskReadyProcess(Task taskMD, TaskDesc td, double time) {
+	public int mapReadyTask(TaskMetaData taskMD, TaskDesc td) {
 		int flag = 2;
 		if (taskMD.allDataSize <= Library.dataSizeThreshold) {
 			td.dataLength = taskMD.allDataSize;
@@ -296,12 +282,10 @@ public class Scheduler {
 				} else
 					taskPush = true;
 				if (taskPush) {
-					schedMaxFwdTime = Library.updateTime(
-							time - SimMatrix.getSimuTime()
-									+ Library.packOverhead, schedMaxFwdTime);
-					Message pushTaskEvent = new Message((byte) 4, td.taskId,
-							td, 0, id, maxDataSchedId, Library.eventId++);
-					sendMsg(pushTaskEvent, schedMaxFwdTime);
+					//schedMaxFwdTime = Library.updateTime(Library.packOverhead, schedMaxFwdTime);
+					Message pushTaskMsg = new Message("push task", td.taskId, 
+							null, td, 0, id, maxDataSchedId, Library.eventId++);
+					sendMsg(pushTaskMsg, localTime + Library.packOverhead);
 					flag = 2;
 				}
 			}
@@ -310,34 +294,104 @@ public class Scheduler {
 	}
 
 	public void executeTask(TaskDesc td) {
-
+		int taskId = td.taskId;
+		Pair pair = new Pair(taskId, null, null, td, "lookup", "metadata:execute task");
+		kvsClientInteract(pair);
 	}
-
-	public void procResCheckReadyTaskEvent(KVSRetObj kvsRetObj) {
-		//double time = SimMatrix.getSimuTime() + Library.unpackOverhead + Library.procTimePerTask;
+	
+	public void tryExecAnotherTask() {
+		TaskDesc td = null;
+		if (localReadyTaskPQ.size() > 0) {
+			td = localReadyTaskPQ.poll();
+			
+		} else if (sharedReadyTaskPQ.size() > 0) {
+			td = sharedReadyTaskPQ.poll();
+		} else {
+			
+		}
+		if (td != null) {
+			executeTask(td);
+		}
+	}
+	
+	public void procNotifyChildRetEvent(KVSRetObj kvsRetObj) {
+		
+	}
+	
+	public void notifyChildren(int taskId) {
+		Pair pair = new Pair(taskId, null, null, taskId, "lookup", "metadata:notify children");
+		kvsClientInteract(pair);
+	}
+	
+	public void actExecuteTask(TaskDesc td) {
+		Library.numTaskFinished++;
+		localTime += Math.random() * Library.maxTaskLength;
+		numIdleCore++;
+		tryExecAnotherTask();
+		notifyChildren(td.taskId);
+	}
+	
+	public String requestData(int taskId, int parentId, TaskDesc td, int dataSize, String dataName) {
+		String data = null;
+		if (dataSize > 0) {
+			if (id == parentId || dataHM.containsKey(dataName))
+				data = dataHM.get(dataName);
+			else {
+				Message reqDataMsg = new Message("request data", taskId, 
+						dataName, td, 0, id, parentId, Library.eventId++); 
+				sendMsg(reqDataMsg, localTime + Library.packOverhead);
+			}
+		}
+		return data;
+	}
+	
+	public void procExecuteTaskRetEvent(KVSRetObj kvsRetObj) {
+		TaskMetaData taskMD = (TaskMetaData)kvsRetObj.value;
+		Task task = new Task();
+		task.taskId = taskMD.taskId;
+		task.taskMD = taskMD;
+		task.numParentDataRecv = 0;
+		task.data = new String();
+		//Library.globalTaskHM.put(task.taskId, task);
+		int i = 0;
+		TaskDesc td = (TaskDesc)(kvsRetObj.identifier);
+		String data = requestData(task.taskId, taskMD.parent.get(i), td,
+				taskMD.dataSize.get(i), taskMD.dataNameList.get(i));
+		while (data != null && i < taskMD.parent.size() || taskMD.dataSize.get(i) == 0) {
+			if (taskMD.dataSize.get(i) > 0)
+				localTime += Library.procTimePerKVSRequest;
+			task.numParentDataRecv++;
+			i++;
+			task.data += data;
+			data = requestData(task.taskId, taskMD.parent.get(i), td,
+					taskMD.dataSize.get(i), taskMD.dataNameList.get(i));
+		}
+		if (task.numParentDataRecv == taskMD.parent.size()) {
+			/* when task collect all the data */
+		}
+		
+		Library.globalTaskHM.put(task.taskId, task);
+	}
+	
+	public void procCheckReadyRetEvent(KVSRetObj kvsRetObj) {
 		TaskMetaData taskMD = (TaskMetaData) (kvsRetObj.value);
+		localTime += Library.procTimePerTask;
 		if (taskMD.indegree > 0)
 			waitTaskList.add((Integer)(kvsRetObj.identifier));
 		else {
 			TaskDesc td = new TaskDesc();
 			td.taskId = taskMD.taskId;
-			int flag = taskReadyProcess(taskMD, td, time);
+			int flag = mapReadyTask(taskMD, td);
 			if (flag == 0 || flag == 1) {
 				if (numIdleCore > 0) {
 					numIdleCore--;
-					/*
-					 * Event TaskDoneEvent = new Event((byte)5, td.taskId, td,
-					 * time + Math.random() * Library.maxTaskLength, nodeId,
-					 * nodeId, Library.eventId++);
-					 * DistributedSimulator.add(TaskDoneEvent);
-					 */
+					executeTask(td);
 				} else if (flag == 0)
 					localReadyTaskPQ.add(td);
 				else
 					sharedReadyTaskPQ.add(td);
 			}
 		}
-		schedMaxFwdTime = Library.timeCompareOverried(schedMaxFwdTime, time);
 		checkReadyTask();
 	}
 }
