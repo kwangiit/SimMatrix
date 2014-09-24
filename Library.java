@@ -44,6 +44,7 @@ public class Library {
 
 	public static int numNeigh;
 	public static double infoMsgSize;
+	public static double pollIntervalUB;
 	public static long numStealTask;
 	public static BufferedWriter logBuffWriter = null; // Summary log writer
 	public static BufferedWriter taskBuffWriter = null; // Task log writer
