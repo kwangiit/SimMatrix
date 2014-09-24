@@ -236,7 +236,9 @@ public class Scheduler {
 		KVSRetObj kvsRetObj = (KVSRetObj)msg.obj;
 		if (!kvsRetObj.result) {
 			if (kvsRetObj.type.equals("compare and swap")) {
-				// do something
+				if (kvsRetObj.forWhat.equals("metadata:children task")) {
+					procChildMDRetEvent(kvsRetObj);
+				}
 			} else {
 				Pair retryPair = new Pair(kvsRetObj.key, kvsRetObj.value, 
 						null, kvsRetObj.identifier, kvsRetObj.type, kvsRetObj.forWhat);
@@ -248,10 +250,15 @@ public class Scheduler {
 					procCheckReadyRetEvent(kvsRetObj);
 				} else if (kvsRetObj.forWhat.equals("metadata:execute task")) {
 					procExecuteTaskRetEvent(kvsRetObj);
+				} else if (kvsRetObj.forWhat.equals("metadata:notify children")){
+					procNotifyChildRetEvent(kvsRetObj);
+				} else if (kvsRetObj.forWhat.equals("metadata:children task")) {
+					procChildMDRetEvent(kvsRetObj);
 				}
-				//else if {
-					
-				//}
+			} else if (kvsRetObj.type.equals("compare and swap")) {
+				if (kvsRetObj.forWhat.equals("metadata:children task")) {
+					updateChildMDSuc(kvsRetObj);
+				}
 			}
 		}
 	}
@@ -320,7 +327,11 @@ public class Scheduler {
 		task.numChildMDUpdated++;
 		if (task.numChildMDUpdated < task.taskMD.children.size()) {
 			updateChildMetadata(task.taskMD.children.get(task.numChildMDUpdated), task.taskId);
-		}
+		} else if (completeTaskList.size() > 0) {
+			int taskId = completeTaskList.pollFirst();
+			notifyChildren(taskId);
+		} else
+			completeQueueBusy = true;
 	}
 	
 	public void procChildMDRetEvent(KVSRetObj kvsRetObj) {
@@ -345,7 +356,11 @@ public class Scheduler {
 		TaskMetaData tm = (TaskMetaData)kvsRetObj.value;
 		if (tm.children.size() > 0) {
 			updateChildMetadata(tm.children.get(0), tm.taskId);
-		}
+		} else if (completeTaskList.size() > 0) {
+				int taskId = completeTaskList.pollFirst();
+				notifyChildren(taskId);
+		} else
+			completeQueueBusy = true;
 	}
 	
 	public void notifyChildren(int taskId) {
@@ -365,7 +380,8 @@ public class Scheduler {
 			completeTaskList.add(td.taskId);
 	}
 	
-	public String requestData(int taskId, int parentId, TaskDesc td, int dataSize, String dataName) {
+	public String requestData(int taskId, int parentId, 
+			TaskDesc td, int dataSize, String dataName) {
 		String data = null;
 		if (dataSize > 0) {
 			if (id == parentId || dataHM.containsKey(dataName))
@@ -378,6 +394,8 @@ public class Scheduler {
 		}
 		return data;
 	}
+	
+	public void get
 	
 	public void procExecuteTaskRetEvent(KVSRetObj kvsRetObj) {
 		TaskMetaData taskMD = (TaskMetaData)kvsRetObj.value;
@@ -402,7 +420,7 @@ public class Scheduler {
 					taskMD.dataSize.get(i), taskMD.dataNameList.get(i));
 		}
 		if (task.numParentDataRecv == taskMD.parent.size()) {
-			/* when task collect all the data */
+			actExecuteTask(td);
 		}
 		
 		Library.globalTaskHM.put(task.taskId, task);
@@ -428,5 +446,19 @@ public class Scheduler {
 			}
 		}
 		checkReadyTask();
+	}
+	
+	public void procRetReqDataEvent(Message msg) {
+		localTime = SimMatrix.getSimuTime() + Library.unpackOverhead;
+		
+	}
+	
+	public void procReqDataEvent(Message msg) {
+		localTime = SimMatrix.getSimuTime() + Library.unpackOverhead;
+		localTime += Library.procTimePerKVSRequest;
+		String data = dataHM.get(msg.content);
+		Message msg = new Message("return req data", msg.info, 
+				data, msg.obj, 0, id, msg.sourceId, Library.eventId++);
+		sendMsg(msg, localTime + Library.packOverhead + Library.getCommOverhead(1000000));
 	}
 }
