@@ -72,14 +72,13 @@ public class SimMatrix {
 				Library.numCorePerNode * Library.numTaskPerCore;
 		Library.taskLog = false;
 		Library.eventId = 0;
-		if (Library.numComputeNode == 1) {
+		if (Library.numComputeNode == 1)
 			Library.numNeigh = 0;
-		} else {
+		else
 			Library.numNeigh = (int) (Math.sqrt(Library.numComputeNode));
-		}
 
 		Library.infoMsgSize = 100; // Bytes
-		Library.stealMsgCommTime = (double) Library.infoMsgSize * 8
+		Library.stealMsgCommTime = (double) Library.infoMsgSize * 8 
 				/ (double) Library.linkSpeed + Library.netLat;
 		Library.numTaskSubmitted = 0;
 		Library.numTaskFinished = 0;

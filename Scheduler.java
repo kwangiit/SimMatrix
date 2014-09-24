@@ -37,6 +37,7 @@ public class Scheduler {
 	//double schedMaxProcTime, schedMaxFwdTime;
 
 	int numTaskFinished;
+	double soFarThroughput;
 
 	public Scheduler(int id, int numCore, int numNeigh) {
 		this.id = id;
@@ -55,6 +56,8 @@ public class Scheduler {
 		kvsMaxProcTime = kvsMaxFwdTime = 0.0;
 		dataHM = new HashMap<String, String>();
 		localTime = 0.0;
+		numTaskFinished = 0;
+		soFarThroughput = 0.0;
 		//schedMaxProcTime = schedMaxFwdTime = 0.0;
 	}
 
@@ -139,8 +142,7 @@ public class Scheduler {
 
 			// send a message to requst tasks
 			Message reqTaskMsg = new Message("request task", -1, null, null,
-					SimMatrix.getSimuTime() + totalLat, id, maxLoadSchedulerId,
-					Library.eventId++);
+					localTime + totalLat, id, maxLoadSchedulerId, Library.eventId++);
 			SimMatrix.add(reqTaskMsg);
 			Library.numWorkStealing++;
 			// set the poll interval back to 0.01
@@ -155,9 +157,13 @@ public class Scheduler {
 			pollInterval *= 2; // double the poll interval
 			if (pollInterval < Library.pollIntervalUB)
 			{
-				Message workstealMsg = new Message("work steal", -1, null, null,
-					SimMatrix.getSimuTime() + totalLat, id, -2, Library.eventId++);
-				SimMatrix.add(workstealMsg);
+				if (!ws)
+				{
+					ws = true;
+					Message workstealMsg = new Message("work steal", -1, null, null,
+							localTime + totalLat, id, -2, Library.eventId++);
+					SimMatrix.add(workstealMsg);
+				}
 			}
 		}
 	}
@@ -439,6 +445,24 @@ public class Scheduler {
 		getTaskData(i, td, task);
 	}
 	
+	public void monitorLocalQueue() {
+		soFarThroughput = (double)numTaskFinished / SimMatrix.getSimuTime();
+		double expectTime = (double)localReadyTaskPQ.size() / soFarThroughput;
+		TaskDesc[] td = new TaskDesc[localReadyTaskPQ.size()];
+		int i = 0;
+		while (localReadyTaskPQ.size() > 0)
+			td[i++] = localReadyTaskPQ.poll();
+		i = 0;
+		while (expectTime > Library.localQueueTimeThreshold) {
+			sharedReadyTaskPQ.add(td[td.length - 1 - i]);
+			i++;
+			expectTime = ((double)td.length - i) / soFarThroughput;
+		}
+		int left = td.length - i;
+		for (int j = 0; j < left; j++) 
+			localReadyTaskPQ.add(td[j]);
+	}
+	
 	public void procCheckReadyRetEvent(KVSRetObj kvsRetObj) {
 		TaskMetaData taskMD = (TaskMetaData) (kvsRetObj.value);
 		localTime += Library.procTimePerTask;
@@ -452,11 +476,10 @@ public class Scheduler {
 				if (numIdleCore > 0) {
 					numIdleCore--;
 					executeTask(td);
-				} else if (flag == 0)
-				{
+				} else if (flag == 0) {
 					localReadyTaskPQ.add(td);
-				}
-				else
+					monitorLocalQueue();
+				} else
 					sharedReadyTaskPQ.add(td);
 			}
 		}
@@ -469,6 +492,7 @@ public class Scheduler {
 		task.numParentDataRecv++;
 		task.data += msg.content;
 		getTaskData(task.numParentDataRecv, (TaskDesc)msg.obj, task);
+		dataHM.put(task.taskMD.dataNameList.get(task.numParentDataRecv - 1), msg.content);
 	}
 	
 	public void procReqDataEvent(Message msg) {
@@ -482,10 +506,67 @@ public class Scheduler {
 	}
 	
 	public void procWorkStealEvent(Message msg, Scheduler[] schedulers) {
+		localTime = SimMatrix.getSimuTime();
 		if (localReadyTaskPQ.size() + sharedReadyTaskPQ.size() == 0) {
 			selectNeigh(target);
 			resetTarget(target);
 			askLoadInfo(schedulers);
 		}
+	}
+	
+	public void procRetReqTaskEvent(Message msg) {
+		localTime = SimMatrix.getSimuTime() + Library.unpackOverhead;
+		if (msg.info > 0) {
+			pollInterval = 0.001;
+			ws = false;
+			@SuppressWarnings("unchecked")
+			LinkedList<TaskDesc> taskList = (LinkedList<TaskDesc>)msg.obj;
+			int numTaskToExecute = numIdleCore <= msg.info ? numIdleCore : msg.info;
+			for (int i = 0; i < numTaskToExecute; i++) {
+				executeTask(taskList.poll());
+			}
+			numIdleCore -= numTaskToExecute;
+			while (taskList.size() > 0)
+				sharedReadyTaskPQ.add(taskList.poll());
+		} else {
+			localTime += pollInterval;
+			pollInterval *= 2;
+			if (pollInterval < Library.pollIntervalUB) {
+				if (!ws)
+				{
+					ws = true;
+					Message workstealMsg = new Message("work steal", -1, null, 
+						null, localTime, id, -2, Library.eventId++);
+					SimMatrix.add(workstealMsg);
+				}
+			}
+		}
+	}
+	
+	public void procReqTaskEvent(Message msg) {
+		localTime = SimMatrix.getSimuTime() + Library.unpackOverhead;
+		Message sendTaskMsg = new Message("send task", 0, null, 
+				null, 0, id, msg.destId, Library.eventId++);
+		
+		int numTaskSent = sharedReadyTaskPQ.size() / 2;
+		if (numTaskSent > 0) {
+			LinkedList<TaskDesc> taskList = new LinkedList<TaskDesc>();
+			for (int i = 0; i < numTaskSent; i++)
+				taskList.add(sharedReadyTaskPQ.poll());
+			sendTaskMsg.info = numTaskSent;
+			sendTaskMsg.obj = taskList;
+		}
+		localTime += Library.packOverhead;
+		sendMsg(sendTaskMsg, localTime);
+	}
+	
+	public void procPushTaskEvent(Message msg) {
+		localTime = SimMatrix.getSimuTime() + Library.unpackOverhead;
+		TaskDesc td = (TaskDesc)msg.obj;
+		if (numIdleCore > 0) {
+			numIdleCore--;
+			executeTask(td);
+		} else
+			localReadyTaskPQ.add(td);
 	}
 }

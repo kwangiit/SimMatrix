@@ -90,6 +90,7 @@ public class Library {
 	public static long numFailWorkStealing;
 	
 	public static int dataSizeThreshold;
+	public static double localQueueTimeThreshold;
 
 	/* write to the summary log */
 	public static void printSummaryLog(long readyTaskListSize) {
