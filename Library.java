@@ -12,60 +12,66 @@ import java.util.*;
 
 public class Library {
 	public static int numComputeNode; // No. of Compute Nodes of the systems
-	public static int[] nodeIdCollection;
 	public static int numCorePerNode; // No. of cores per node
+	public static int[] nodeIds;
+
 	public static int numTaskPerCore;
+	public static int numAllTask; // Total no. of jobs
+	public static double maxTaskLength;
+	public static HashMap<Integer, Task> globalTaskHM;
 	public static String dagType;
 	public static int dagPara;
-	public static HashMap<Integer, Task> globalTaskHM;
 
-	public static double linkSpeed; // The network link speed
-	public static double netLat; // The network latency
-	public static double oneMsgCommTime;
-	public static double stealMsgCommTime;
-	public static double procTimePerTask; // The processing time per job
-	public static double procTimePerKVSRequest;
+	public static double networkBandwidth; // The network link speed
+	public static double networkLatency; // The network latency
+	public static int singleMsgSize; // Job description size
+	public static double singleMsgTransTime;
 	public static double packOverhead;
 	public static double unpackOverhead;
+	public static double stealMsgCommTime;
+	
+	public static double procTimePerTask; // The processing time per job
+	public static double procTimePerKVSRequest;
 
-	public static int oneMsgSize; // Job description size
-	public static double maxTaskLength;
-	public static int numAllTask; // Total no. of jobs
-	public static boolean taskLog; // Log for each task or not
+	public static BufferedWriter summaryLogBW = null; // Summary log writer
 	public static double logTimeInterval; // The interval to do logging
+	public static boolean taskLog; // Log for each task or not
+	public static BufferedWriter taskLogBW = null; // Task log writer
+	
 	public static double visualTimeInterval;
 	public static double screenCapMilInterval;
 
-	public static long numTaskToSubmit;
-	public static long numTaskLowBd;
-	public static long numTaskSubmitted;
-	public static long numTaskFinished;
 	public static long eventId;
-
+	public static int numTaskFinished;
+	public static long numMsg;
+	public static int dataSizeThreshold;
+	public static double localQueueTimeThreshold;
+	
 	public static int numNeigh;
 	public static double infoMsgSize;
+	public static double initPollInterval;
 	public static double pollIntervalUB;
 	public static long numStealTask;
-	public static BufferedWriter logBuffWriter = null; // Summary log writer
-	public static BufferedWriter taskBuffWriter = null; // Task log writer
+	public static long numWorkStealing;
+	public static long numFailWorkStealing;
 
 	public static Runtime runtime;
 	public static double currentSimuTime;
 	public static String numUser;
 	public static String numResource;
 	public static int numThread;
-	public static long numAllCore;
-	public static long numFreeCore;
+	public static int numAllCore;
+	public static int numFreeCore;
 	public static String numPendCore;
-	public static long numBusyCore;
-	public static long waitQueueLength;
-	public static String waitNotQueueLength;
-	public static long activeQueueLength;
-	public static String doneQueueLength;
-	public static long deliveredTask;
-	public static long oldDeliveredTask;
+	public static int numBusyCore;
+	public static int waitQueueLength;
+	public static int readyQueueLength;
+	public static int activeQueueLength;
+	public static int doneQueueLength;
+	public static int deliveredTask;
+	public static int oldDeliveredTask;
 	public static double throughput;
-	public static long successTask;
+	public static int successTask;
 	public static String failedTask;
 	public static String retriedTask;
 	public static String resourceAllocated;
@@ -82,60 +88,52 @@ public class Library {
 	public static long jvmFreeSize;
 	public static long jvmMaxSize;
 
-	public static Integer[] hsInt;
-	public static boolean[] target;
-
-	public static long numMsg;
-	public static long numWorkStealing;
-	public static long numFailWorkStealing;
-	
-	public static int dataSizeThreshold;
-	public static double localQueueTimeThreshold;
+	//public static Integer[] hsInt;
+	//public static boolean[] target;
 
 	/* write to the summary log */
-	public static void printSummaryLog(long readyTaskListSize) {
+	public static void summaryLogging() {
 		currentSimuTime = CentralSimulator.getSimuTime();
 		numThread = Thread.activeCount();
 		numFreeCore = numAllCore - numBusyCore;
-		waitQueueLength = readyTaskListSize;
+		//waitQueueLength = readyTaskListSize;
 		activeQueueLength = numBusyCore;
 		deliveredTask = numTaskFinished;
-		throughput = (deliveredTask - oldDeliveredTask)
-				/ Library.logTimeInterval;
+		doneQueueLength = numTaskFinished;
+		throughput = (deliveredTask - oldDeliveredTask)/ Library.logTimeInterval;
 		successTask = deliveredTask;
 		jvmSize = runtime.totalMemory();
 		jvmFreeSize = runtime.freeMemory();
-		if (jvmSize > jvmMaxSize) {
+		if (jvmSize > jvmMaxSize)
 			jvmMaxSize = jvmSize;
-		}
 		String line = Double.toString(currentSimuTime) + " " + numUser + " "
 				+ numResource + " " + Integer.toString(numThread) + " "
-				+ Long.toString(numAllCore) + " " + Long.toString(numFreeCore)
-				+ " " + numPendCore + " " + Long.toString(numBusyCore) + " "
-				+ Long.toString(waitQueueLength) + " " + waitNotQueueLength
-				+ " " + Long.toString(activeQueueLength) + " "
-				+ doneQueueLength + " " + Long.toString(deliveredTask) + " "
+				+ Integer.toString(numAllCore) + " " + Integer.toString(numFreeCore)
+				+ " " + numPendCore + " " + Integer.toString(numBusyCore) + " "
+				+ Integer.toString(waitQueueLength) + " " + Integer.toString(readyQueueLength)
+				+ " " + Integer.toString(activeQueueLength) + " "
+				+ Integer.toString(doneQueueLength) + " " + Long.toString(deliveredTask) + " "
 				+ Double.toString(throughput) + " "
-				+ Long.toString(successTask) + " " + failedTask + " "
+				+ Integer.toString(successTask) + " " + failedTask + " "
 				+ retriedTask + " " + resourceAllocated + " "
-				+ numTaskSubmitted + " " + cacheSize + " " + cacheLocalHit
+				+ Integer.toString(Library.numAllTask) + " " + cacheSize + " " + cacheLocalHit
 				+ " " + cacheGlobalHit + " " + cacheMiss + " "
 				+ cacheLocalHitRatio + " " + cacheGlobalHitRatio + " "
 				+ systemCPUUser + " " + systemCPUSystem + " " + systemCPUIdle
 				+ " " + Long.toString(jvmSize) + " "
 				+ Long.toString(jvmFreeSize) + " " + jvmMaxSize + "\r\n";
 		try {
-			logBuffWriter.write(line);
+			summaryLogBW.write(line);
 		} catch (IOException e) {
 			System.out.println(e);
-			System.exit(1);
 			System.out.println("What is the matter?");
+			System.exit(1);
 		}
 		oldDeliveredTask = deliveredTask;
 	}
 	
 	public static double getCommOverhead(int msgSize) {
-		return msgSize * 8.0 / (double) Library.linkSpeed + Library.netLat;
+		return msgSize * 8.0 / (double) Library.networkBandwidth + Library.networkLatency;
 	}
 	
 	public static double updateTime(double increment, double base) {
@@ -154,26 +152,23 @@ public class Library {
 	
 	public static int hashServer(Object key) {
 		int hashCode = Math.abs(key.hashCode());
-		return Library.nodeIdCollection[hashCode % Library.numComputeNode];
+		return Library.nodeIds[hashCode % Library.numComputeNode];
 	}
 	
 	public static byte[] serialize(Object obj) {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        try
-        {
+        try {
             ObjectOutputStream oos = new ObjectOutputStream(baos);
             oos.writeObject(obj);
-        }
-        catch (IOException e)
-        {
+        } catch (IOException e) {
             e.printStackTrace();
         }
         return baos.toByteArray();		
 	}
 	
 	/* summary logging event processing */
-	public static void loggingEventProcess() {
-		Library.printSummaryLog(Library.waitQueueLength);
+	public static void procLoggingEvent() {
+		Library.summaryLogging();
 		Message logging = new Message("logging", -1, null, null,
 				SimMatrix.getSimuTime() + Library.logTimeInterval,
 				-2, -2, Library.eventId++);

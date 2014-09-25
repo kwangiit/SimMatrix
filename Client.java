@@ -12,14 +12,14 @@ import java.util.Map.Entry;
 public class Client {
 	int clientId;
 	int numTask;
-	boolean waitFlag;
+	//boolean waitFlag;
 	HashMap<Integer, ArrayList<Integer>> adjList;
 	HashMap<Integer, Integer> inDegree;
 	
 	public Client(int clientId, int numTask){//, long numTaskRecv) {
 		this.clientId = clientId;
 		this.numTask = numTask;
-		this.waitFlag = false;
+		//this.waitFlag = false;
 		this.adjList = new HashMap<Integer, ArrayList<Integer>>();
 		this.inDegree = new HashMap<Integer, Integer>();
 	}
@@ -132,8 +132,10 @@ public class Client {
 			Entry<Integer, ArrayList<Integer>> entry = it.next();
 			int index = entry.getKey();
 			ArrayList<Integer> existList = entry.getValue();
-			for (int j = 0; j < existList.size(); j++)
-				inDegree.put(existList.get(j), inDegree.get(existList.get(j)).intValue() + 1);
+			if (existList != null) {
+				for (int j = 0; j < existList.size(); j++)
+					inDegree.put(existList.get(j), inDegree.get(existList.get(j)).intValue() + 1);
+			}
 		}
 	}
 	

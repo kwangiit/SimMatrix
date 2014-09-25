@@ -74,11 +74,11 @@ public class CentralSimulator
         Library.numTaskPerCore = Integer.parseInt(args[2]);
         Library.maxTaskLength = Double.parseDouble(args[3]);
 
-        Library.linkSpeed = 6800000000.0;    // b/sec
-        Library.netLat = 0.0001;            // second
+        Library.networkBandwidth = 6800000000.0;    // b/sec
+        Library.networkLatency = 0.0001;            // second
         Library.procTimePerTask = 0.001;    // second
 
-        Library.oneMsgSize = 1024.0;    // Bytes
+        Library.singleMsgSize = 1024.0;    // Bytes
         Library.numAllTask = (long)Library.numComputeNode *
                 (long)Library.numCorePerNode * (long)Library.numTaskPerCore;
         Library.taskLog = false;    // log for each task or not
@@ -95,13 +95,13 @@ public class CentralSimulator
         Library.numTaskFinished = 0;
         Library.eventId = 0;
         
-        Library.oneMsgCommTime = (double)Library.oneMsgSize * 8 /
-                (double)Library.linkSpeed + Library.netLat;
+        Library.singleMsgTransTime = (double)Library.singleMsgSize * 8 /
+                (double)Library.networkBandwidth + Library.networkLatency;
         try
         {
-            Library.logBuffWriter = new BufferedWriter(new FileWriter(
+            Library.summaryLogBW = new BufferedWriter(new FileWriter(
                     "summary_" +  Library.numComputeNode + ".txt"));
-            Library.taskBuffWriter = new BufferedWriter(new FileWriter(
+            Library.taskLogBW = new BufferedWriter(new FileWriter(
                     "task_" +  Library.numComputeNode + ".txt"));
         }
         catch(IOException ioe)
@@ -116,7 +116,7 @@ public class CentralSimulator
                                         (long)Library.numCorePerNode;
         Library.numBusyCore = 0;
         Library.numPendCore = "0";
-        Library.waitNotQueueLength = "0";
+        Library.readyQueueLength = "0";
         Library.doneQueueLength = "0";
         Library.failedTask = "0";
         Library.retriedTask = "0";

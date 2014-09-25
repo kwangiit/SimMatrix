@@ -70,8 +70,8 @@ public class Dispatcher
     public double pushTime(int numTaskToDispatch)
     {
         double msgSize = 0;
-        msgSize = (double)Library.oneMsgSize * (double)numTaskToDispatch;
-        return msgSize * 8 / Library.linkSpeed + Library.netLat;
+        msgSize = (double)Library.singleMsgSize * (double)numTaskToDispatch;
+        return msgSize * 8 / Library.networkBandwidth + Library.networkLatency;
     }
 
     /* dispatch tasks to compute node */
@@ -86,7 +86,7 @@ public class Dispatcher
              * from [0, Library.maxTaskLength)
              */
             CentralSimulator.add(new Message((byte)2, -2, arriveTime + Math.random() * 
-                                    Library.maxTaskLength + Library.oneMsgCommTime,
+                                    Library.maxTaskLength + Library.singleMsgTransTime,
                                     recNode.nodeId, dispatcherId, Library.eventId++));
         }
 
@@ -113,7 +113,7 @@ public class Dispatcher
     /* summary logging event processing */
     public void logEventProcess()
     {
-        Library.printSummaryLog(readyTaskListSize);
+        Library.summaryLogging(readyTaskListSize);
         Message logging = new Message((byte)1, 0, CentralSimulator.getSimuTime()
                 + Library.logTimeInterval, -3, -3, Library.eventId++);
         if (Library.numTaskFinished != Library.numAllTask)
@@ -256,8 +256,8 @@ public class Dispatcher
         /* flush the summary log */
     	try
     	{
-            Library.logBuffWriter.flush();
-            Library.logBuffWriter.close();
+            Library.summaryLogBW.flush();
+            Library.summaryLogBW.close();
     	}
     	catch (IOException e)
     	{

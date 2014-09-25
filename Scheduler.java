@@ -21,44 +21,47 @@ public class Scheduler {
 
 	boolean[] target;
 	int[] neighId;
-	int numTaskDispatched;
 	double pollInterval;
-	int numNeighAsked;
 	int maxLoad;
 	int maxLoadSchedIdx;
 	boolean ws;
-	boolean completeQueueBusy;
+	
+	boolean completeTaskBusy;
 
 	HashMap<Object, Object> kvsHM;
 	double kvsMaxProcTime, kvsMaxFwdTime;
 
 	HashMap<String, String> dataHM;
+	double schedMaxProcTime, schedMaxFwdTime;
 	double localTime;
-	//double schedMaxProcTime, schedMaxFwdTime;
 
 	int numTaskFinished;
+	int numTaskTransmit;
 	double soFarThroughput;
+	double localQueueTimeThreshold;
 
-	public Scheduler(int id, int numCore, int numNeigh) {
+	public Scheduler(int id) {
 		this.id = id;
-		this.numCore = numCore;
-		this.numIdleCore = numCore;
-		this.neighId = new int[numNeigh];
-		this.waitTaskList = new LinkedList<Integer>();
-		this.localReadyTaskPQ = new PriorityQueue<TaskDesc>(new PQComparator());
-		this.sharedReadyTaskPQ = new PriorityQueue<TaskDesc>(new PQComparator());
-		this.completeTaskList = new LinkedList<Integer>();
-		this.numTaskDispatched = 0;
-		this.numTaskFinished = 0;
-		this.pollInterval = 0.01;
+		numCore = Library.numCorePerNode;
+		numIdleCore = numCore;
+		waitTaskList = new LinkedList<Integer>();
+		localReadyTaskPQ = new PriorityQueue<TaskDesc>(new PQComparator());
+		sharedReadyTaskPQ = new PriorityQueue<TaskDesc>(new PQComparator());
+		completeTaskList = new LinkedList<Integer>();
+		target = new boolean[Library.numComputeNode];
+		neighId = new int[Library.numNeigh];
+		pollInterval = Library.initPollInterval;
 		ws = false;
+		completeTaskBusy = false;
 		kvsHM = new HashMap<Object, Object>();
 		kvsMaxProcTime = kvsMaxFwdTime = 0.0;
 		dataHM = new HashMap<String, String>();
+		schedMaxProcTime = schedMaxFwdTime = 0.0;
 		localTime = 0.0;
+		numTaskTransmit = 0;
 		numTaskFinished = 0;
 		soFarThroughput = 0.0;
-		//schedMaxProcTime = schedMaxFwdTime = 0.0;
+		localQueueTimeThreshold = Library.localQueueTimeThreshold;
 	}
 
 	/* select neighbors to do work stealing */
@@ -341,7 +344,7 @@ public class Scheduler {
 			int taskId = completeTaskList.pollFirst();
 			notifyChildren(taskId);
 		} else
-			completeQueueBusy = true;
+			completeTaskBusy = true;
 	}
 	
 	public void procChildMDRetEvent(KVSRetObj kvsRetObj) {
@@ -370,7 +373,7 @@ public class Scheduler {
 				int taskId = completeTaskList.pollFirst();
 				notifyChildren(taskId);
 		} else
-			completeQueueBusy = true;
+			completeTaskBusy = true;
 	}
 	
 	public void notifyChildren(int taskId) {
@@ -383,8 +386,8 @@ public class Scheduler {
 		localTime += Math.random() * Library.maxTaskLength;
 		numIdleCore++;
 		tryExecAnotherTask();
-		if (!completeQueueBusy){
-			completeQueueBusy = true;
+		if (!completeTaskBusy){
+			completeTaskBusy = true;
 			notifyChildren(td.taskId);
 		} else
 			completeTaskList.add(td.taskId);
@@ -496,13 +499,15 @@ public class Scheduler {
 	}
 	
 	public void procReqDataEvent(Message msg) {
-		localTime = SimMatrix.getSimuTime() + Library.unpackOverhead;
-		localTime += Library.procTimePerKVSRequest;
+		schedMaxFwdTime = Library.updateTime(Library.unpackOverhead, schedMaxFwdTime);
+		schedMaxProcTime = Library.timeCompareOverried(schedMaxProcTime, schedMaxFwdTime);
+		schedMaxProcTime = Library.updateTime(Library.procTimePerKVSRequest, schedMaxProcTime);
+		schedMaxFwdTime = Library.timeCompareOverried(schedMaxFwdTime, schedMaxProcTime);
+		schedMaxFwdTime = Library.updateTime(Library.packOverhead, schedMaxFwdTime);
 		String data = dataHM.get(msg.content);
 		Message msg = new Message("return req data", msg.info, 
 				data, msg.obj, 0, id, msg.sourceId, Library.eventId++);
-		localTime += Library.packOverhead;
-		sendMsg(msg, localTime + Library.getCommOverhead(1000000));
+		sendMsg(msg, schedMaxFwdTime + Library.getCommOverhead(1000000));
 	}
 	
 	public void procWorkStealEvent(Message msg, Scheduler[] schedulers) {
@@ -544,7 +549,7 @@ public class Scheduler {
 	}
 	
 	public void procReqTaskEvent(Message msg) {
-		localTime = SimMatrix.getSimuTime() + Library.unpackOverhead;
+		schedMaxFwdTime = Library.updateTime(Library.unpackOverhead, schedMaxFwdTime);
 		Message sendTaskMsg = new Message("send task", 0, null, 
 				null, 0, id, msg.destId, Library.eventId++);
 		
@@ -556,12 +561,13 @@ public class Scheduler {
 			sendTaskMsg.info = numTaskSent;
 			sendTaskMsg.obj = taskList;
 		}
-		localTime += Library.packOverhead;
+		schedMaxFwdTime = Library.updateTime(Library.packOverhead, schedMaxFwdTime);
 		sendMsg(sendTaskMsg, localTime);
 	}
 	
 	public void procPushTaskEvent(Message msg) {
-		localTime = SimMatrix.getSimuTime() + Library.unpackOverhead;
+		schedMaxFwdTime = Library.updateTime(Library.unpackOverhead, schedMaxFwdTime);
+		localTime = schedMaxFwdTime;
 		TaskDesc td = (TaskDesc)msg.obj;
 		if (numIdleCore > 0) {
 			numIdleCore--;

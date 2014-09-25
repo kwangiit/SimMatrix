@@ -10,6 +10,7 @@
 import java.util.*;
 import java.io.*;
 import java.awt.*;
+
 import javax.swing.*;
 
 public class SimMatrix {
@@ -46,55 +47,82 @@ public class SimMatrix {
 	}
 
 	/* initialize the parameters from the library */
-	public void initLibrary(String[] args) {
-		Library.numComputeNode = Integer.parseInt(args[0]);
-		Library.nodeIdCollection = new int[Library.numComputeNode];
+	public void initLibrary(String[] args) throws IOException{
+		BufferedReader configBR = new BufferedReader(new FileReader(args[0]));
+		HashMap<String, String> configHM = new HashMap<String, String>();
+		String str = configBR.readLine();
+		while (str != null) {
+			String[] strLine = str.split("\t");
+			configHM.put(strLine[0], strLine[1]);
+			str = configBR.readLine();
+		}
+		Library.numComputeNode = Integer.parseInt(configHM.get("NumComputeNode"));
+		Library.nodeIds = new int[Library.numComputeNode];
 		for (int i = 0; i < Library.numComputeNode; i++)
-			Library.nodeIdCollection[i] = i;
-		Library.numCorePerNode = Integer.parseInt(args[1]);
-		Library.numTaskPerCore = Integer.parseInt(args[2]);
-		Library.maxTaskLength = Double.parseDouble(args[3]);
-		Library.dagType = args[4];
-		Library.dagPara = Integer.parseInt(args[5]);
-		
-		Library.linkSpeed = 6800000000.0; // b/sec
-		Library.netLat = 0.0001; // second
-		Library.oneMsgSize = 1024; // Bytes
-		Library.packOverhead = Library.unpackOverhead = 0.000005;
-
-		Library.oneMsgCommTime = Library.getCommOverhead(Library.oneMsgSize);
-		Library.procTimePerTask = 0.001;
-		Library.procTimePerKVSRequest = 0.001;
-
-		Library.numTaskToSubmit = 1000000;
-		Library.numTaskLowBd = 200000;
+			Library.nodeIds[i] = i;
+		Library.numCorePerNode = Integer.parseInt(configHM.get("NumCorePerNode"));
+		Library.numTaskPerCore = Integer.parseInt(configHM.get("NumTaskPerCore"));
 		Library.numAllTask = Library.numComputeNode * 
 				Library.numCorePerNode * Library.numTaskPerCore;
-		Library.taskLog = false;
+		Library.maxTaskLength = Double.parseDouble(configHM.get("MaxTaskLength"));
+		Library.dagType = configHM.get("DagType");
+		Library.dagPara = Integer.parseInt(configHM.get("DagPara"));
+		Library.networkBandwidth = Double.parseDouble(configHM.get("NetworkBandwidth")); // b/sec
+		Library.networkLatency = Double.parseDouble(configHM.get("NetworkLatency")); // second
+		Library.packOverhead = Double.parseDouble(configHM.get("PackOverhead"));
+		Library.unpackOverhead = Double.parseDouble(configHM.get("UnPackOverhead"));
+		Library.singleMsgSize = Integer.parseInt(configHM.get("SingleMsgSize")); // Bytes
+		Library.singleMsgTransTime = Library.getCommOverhead(Library.singleMsgSize);
+		Library.procTimePerTask = Double.parseDouble(configHM.get("ProcTimePerTask"));
+		Library.procTimePerKVSRequest = Double.parseDouble(configHM.get("ProcTimePerKVSRequest"));
+		
+		Library.taskLog = Boolean.parseBoolean(configHM.get("TaskLog"));
 		Library.eventId = 0;
+		Library.numTaskFinished = 0;
 		if (Library.numComputeNode == 1)
 			Library.numNeigh = 0;
 		else
 			Library.numNeigh = (int) (Math.sqrt(Library.numComputeNode));
 
-		Library.infoMsgSize = 100; // Bytes
-		Library.stealMsgCommTime = (double) Library.infoMsgSize * 8 
-				/ (double) Library.linkSpeed + Library.netLat;
-		Library.numTaskSubmitted = 0;
-		Library.numTaskFinished = 0;
+		//Library.infoMsgSize = 100; // Bytes
+		//Library.stealMsgCommTime = (double) Library.infoMsgSize * 8 
+		//		/ (double) Library.networkBandwidth + Library.networkLatency;
+		//Library.numTaskSubmitted = 0;
+		Library.numMsg = 0;
+		Library.numWorkStealing = 0;
+		Library.numFailWorkStealing = 0;
 		Library.numStealTask = 0;
-		Library.logTimeInterval = 1.0;
-		Library.visualTimeInterval = 0.5;
-
+		
+		Library.dataSizeThreshold = Integer.parseInt(configHM.get("DataSizeThreshold"));
+		Library.initPollInterval = Double.parseDouble(configHM.get("InitPollInterval"));
+		Library.pollIntervalUB = Double.parseDouble(configHM.get("PollIntervalUB"));
+		
+		Library.logTimeInterval = Double.parseDouble(configHM.get("LogTimeInterval"));//1.0;
+		Library.visualTimeInterval = Double.parseDouble(configHM.get("VisualTimeInterval"));//0.5;
+		
+		Library.localQueueTimeThreshold = Double.parseDouble(
+				configHM.get("LocalQueueTimeThreshold"));
 		// equivalent to 20 frames per second
-		Library.screenCapMilInterval = 50;
+		Library.screenCapMilInterval = Integer.parseInt(configHM.get("ScreenCapMilInterval"));//50;
 
+		
+		Library.numThread = 1;
+		Library.numAllCore = Library.numComputeNode * Library.numCorePerNode;
+		Library.numFreeCore = Library.numAllCore;
+		Library.numPendCore = "0";
 		Library.numBusyCore = 0;
-		Library.waitQueueLength = 0;
+		Library.waitQueueLength = Library.numAllTask;
+		Library.readyQueueLength = 0;
+		Library.activeQueueLength = 0;
+		Library.doneQueueLength = 0;
+		Library.deliveredTask = 0;
+		Library.oldDeliveredTask = 0;
+		Library.throughput = 0.0;
+		Library.successTask = 0;
 
 		try {
-			Library.logBuffWriter = new BufferedWriter(new FileWriter(
-					"summaryD_" + Library.numComputeNode + ".txt"));
+			Library.summaryLogBW = new BufferedWriter(
+					new FileWriter("summaryD_" + Library.numComputeNode));
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
@@ -102,11 +130,7 @@ public class SimMatrix {
 		Library.runtime = Runtime.getRuntime();
 		Library.numUser = "1";
 		Library.numResource = "0";
-		Library.numAllCore = (long) Library.numComputeNode
-				* (long) Library.numCorePerNode;
-		Library.numPendCore = "0";
-		Library.waitNotQueueLength = "0";
-		Library.doneQueueLength = "0";
+
 		Library.failedTask = "0";
 		Library.retriedTask = "0";
 		Library.resourceAllocated = "0";
@@ -119,17 +143,9 @@ public class SimMatrix {
 		Library.systemCPUUser = "0";
 		Library.systemCPUSystem = "0";
 		Library.systemCPUIdle = "100";
-		Library.oldDeliveredTask = 0;
 
-		Library.target = new boolean[Library.numComputeNode];
-		for (int i = 0; i < Library.numComputeNode; i++) {
-			Library.target[i] = false;
-		}
 
 		/* counters */
-		Library.numMsg = 0;
-		Library.numWorkStealing = 0;
-		Library.numFailWorkStealing = 0;
 	}
 
 	/* initialization of the simulation environment */
@@ -143,7 +159,7 @@ public class SimMatrix {
 		/* initialize nodes */
 		schedulers = new Scheduler[Library.numComputeNode];
 		for (int i = 0; i < Library.numComputeNode; i++) {
-			schedulers[i] = new Scheduler(i, Library.numCorePerNode, Library.numNeigh);
+			schedulers[i] = new Scheduler(i);
 		}
 
 		System.out.println("Finish Initialization!");
@@ -164,115 +180,115 @@ public class SimMatrix {
 	 * accept the submssion of tasks, either submitted by the client, or
 	 * dispatched by the a neighbor in work stealing
 	 */
-	public void taskReceptionEventProcess(Message event) {
-		Scheduler recvNode = schedulers[event.destId];
-		recvNode.readyTaskListSize += event.info;
-
-		/* if there are idle cores, then execute tasks */
-		if (recvNode.numIdleCore > 0) {
-			recvNode.execute(SimMatrix.getSimuTime());
-		}
-		if (event.sourceId == -1) {
-			Library.waitQueueLength += event.info;
-			client.waitFlag = false;
-		}
-	}
+//	public void taskReceptionEventProcess(Message event) {
+//		Scheduler recvNode = schedulers[event.destId];
+//		recvNode.readyTaskListSize += event.info;
+//
+//		/* if there are idle cores, then execute tasks */
+//		if (recvNode.numIdleCore > 0) {
+//			recvNode.execute(SimMatrix.getSimuTime());
+//		}
+//		if (event.sourceId == -1) {
+//			Library.waitQueueLength += event.info;
+//			client.waitFlag = false;
+//		}
+//	}
 
 	/* task end event processing */
-	public void taskEndEventProcess(Message event) {
-		Scheduler curNode = schedulers[event.sourceId];
-		curNode.numIdleCore++;
-		curNode.numTaskFinished++;
-		Library.numTaskFinished++;
-		Library.numBusyCore--;
-		if (curNode.id == 0 && !client.waitFlag) {
-			/*
-			 * if the number of waiting tasks of the first node is below the
-			 * predefined threshold and the client still has tasks, then the
-			 * client would send more tasks
-			 */
-			if (client.numTask > 0
-					&& curNode.readyTaskListSize < Library.numTaskLowBd) {
-				client.submitTaskToDispatcher(
-						SimMatrix.getSimuTime()
-								+ Library.oneMsgCommTime, 0, false);
-			}
-		}
-
-		/*
-		 * if current node still have more tasks, then execute tasks, otherwise
-		 * do work tealing
-		 */
-		if (curNode.readyTaskListSize > 0) {
-			curNode.execute(SimMatrix.getSimuTime());
-		} else if (Library.numNeigh > 0) {
-			// instead of enqueueing one event, directly call the routine
-			curNode.askLoadInfo(schedulers);
-		}
-	}
+//	public void taskEndEventProcess(Message event) {
+//		Scheduler curNode = schedulers[event.sourceId];
+//		curNode.numIdleCore++;
+//		curNode.numTaskFinished++;
+//		Library.numTaskFinished++;
+//		Library.numBusyCore--;
+//		if (curNode.id == 0 && !client.waitFlag) {
+//			/*
+//			 * if the number of waiting tasks of the first node is below the
+//			 * predefined threshold and the client still has tasks, then the
+//			 * client would send more tasks
+//			 */
+//			if (client.numTask > 0
+//					&& curNode.readyTaskListSize < Library.numTaskLowBd) {
+//				client.submitTaskToDispatcher(
+//						SimMatrix.getSimuTime()
+//								+ Library.oneMsgCommTime, 0, false);
+//			}
+//		}
+//
+//		/*
+//		 * if current node still have more tasks, then execute tasks, otherwise
+//		 * do work tealing
+//		 */
+//		if (curNode.readyTaskListSize > 0) {
+//			curNode.execute(SimMatrix.getSimuTime());
+//		} else if (Library.numNeigh > 0) {
+//			// instead of enqueueing one event, directly call the routine
+//			curNode.askLoadInfo(schedulers);
+//		}
+//	}
 
 	/* do work stealing */
-	public void stealEventProcess(Message event) {
-		Scheduler curNode = schedulers[event.sourceId];
-		// will chain with request or other steal events
-		curNode.askLoadInfo(schedulers);
-	}
+//	public void stealEventProcess(Message event) {
+//		Scheduler curNode = schedulers[event.sourceId];
+//		// will chain with request or other steal events
+//		curNode.askLoadInfo(schedulers);
+//	}
 
 	/* request task event processing */
-	public void taskDispatchEventProcess(Message event) {
-		Scheduler curNode = schedulers[event.destId];
-
-		/* send have of the load */
-		int loadToSend = (int) Math
-				.floor((curNode.readyTaskListSize - curNode.numIdleCore) / 2);
-
-		double latency = 0;
-		double msgSize = 0;
-
-		/* if current node has more available tasks, then send tasks */
-		if (curNode.readyTaskListSize >= loadToSend && loadToSend > 0) {
-			int nodeToSend = event.sourceId;
-			msgSize = loadToSend * Library.taskSize;
-			latency = msgSize * 8 / Library.linkSpeed + Library.netLat;
-
-			Message submission = new Message((byte) 0, loadToSend,
-					SimMatrix.getSimuTime() + latency,
-					curNode.id, nodeToSend, Library.eventId++);
-			Library.numMsg++;
-			SimMatrix.add(submission);
-			curNode.readyTaskListSize -= loadToSend;
-			curNode.numTaskDispatched += loadToSend;
-		} else // otherwise, ask the neighbor to steal again
-		{
-			loadToSend = 0;
-			// if it happens that the requested node didn't have any jobs
-			latency = Library.stealMsgCommTime;
-			Library.numMsg++;
-			Library.numFailWorkStealing++;
-			Message stealEvent = new Message((byte) 2, -1,
-					SimMatrix.getSimuTime() + latency,
-					event.sourceId, -2, Library.eventId++);
-			SimMatrix.add(stealEvent);
-		}
-		if (curNode.id == 0 && !client.waitFlag) {
-			if (client.numTask > 0
-					&& curNode.readyTaskListSize < Library.numTaskLowBd) {
-				client.submitTaskToDispatcher(
-						SimMatrix.getSimuTime(), 0, false);
-			}
-		}
-	}
+//	public void taskDispatchEventProcess(Message event) {
+//		Scheduler curNode = schedulers[event.destId];
+//
+//		/* send have of the load */
+//		int loadToSend = (int) Math
+//				.floor((curNode.readyTaskListSize - curNode.numIdleCore) / 2);
+//
+//		double latency = 0;
+//		double msgSize = 0;
+//
+//		/* if current node has more available tasks, then send tasks */
+//		if (curNode.readyTaskListSize >= loadToSend && loadToSend > 0) {
+//			int nodeToSend = event.sourceId;
+//			msgSize = loadToSend * Library.taskSize;
+//			latency = msgSize * 8 / Library.linkSpeed + Library.netLat;
+//
+//			Message submission = new Message((byte) 0, loadToSend,
+//					SimMatrix.getSimuTime() + latency,
+//					curNode.id, nodeToSend, Library.eventId++);
+//			Library.numMsg++;
+//			SimMatrix.add(submission);
+//			curNode.readyTaskListSize -= loadToSend;
+//			curNode.numTaskDispatched += loadToSend;
+//		} else // otherwise, ask the neighbor to steal again
+//		{
+//			loadToSend = 0;
+//			// if it happens that the requested node didn't have any jobs
+//			latency = Library.stealMsgCommTime;
+//			Library.numMsg++;
+//			Library.numFailWorkStealing++;
+//			Message stealEvent = new Message((byte) 2, -1,
+//					SimMatrix.getSimuTime() + latency,
+//					event.sourceId, -2, Library.eventId++);
+//			SimMatrix.add(stealEvent);
+//		}
+//		if (curNode.id == 0 && !client.waitFlag) {
+//			if (client.numTask > 0
+//					&& curNode.readyTaskListSize < Library.numTaskLowBd) {
+//				client.submitTaskToDispatcher(
+//						SimMatrix.getSimuTime(), 0, false);
+//			}
+//		}
+//	}
 
 	/* process the visualization event */
-	public void visualEvent() {
-		this.canvas.repaint();
-		Message visEvent = new Message(
-				(byte) 5,
-				-1,
-				SimMatrix.getSimuTime() + Library.visualTimeInterval,
-				-2, -2, Library.eventId++);
-		this.ts.add(visEvent);
-	}
+//	public void visualEvent() {
+//		this.canvas.repaint();
+//		Message visEvent = new Message(
+//				(byte) 5,
+//				-1,
+//				SimMatrix.getSimuTime() + Library.visualTimeInterval,
+//				-2, -2, Library.eventId++);
+//		this.ts.add(visEvent);
+//	}
 
 	/*
 	 * calculate the coefficient variance of the number of tasks finished by
@@ -317,9 +333,10 @@ public class SimMatrix {
 	}
 
 	public static void main(String[] args) throws InterruptedException {
-		if (args.length != 6) {
-			System.out.println("Need three parameters: num_node, num_core_per_node, "
-					+ "num_tasks_per_core, max_task_length, dag_type, data_para");
+		if (args.length != 1) {
+			System.out.println("Please specify the configuration file!");
+					//"Need three parameters: num_node, num_core_per_node, "
+					//+ "num_tasks_per_core, max_task_length, dag_type, data_para");
 			System.exit(1);
 		}
 		long start = System.currentTimeMillis();
@@ -360,44 +377,25 @@ public class SimMatrix {
 			msg = SimMatrix.pollFirst();
 			SimMatrix.setSimuTime(msg.occurTime);
 			if (msg.type.equals("logging"))
-				Library.loggingEventProcess();
+				Library.procLoggingEvent();
 			else if (msg.type.equals("kvs"))
 				sm.schedulers[msg.destId].procKVSEvent(msg);
 			else if (msg.type.equals("kvs return"))
+				sm.schedulers[msg.destId].procKVSRetEvent(msg);
 			else if (msg.type.equals("work steal"))
-			switch (msg.type) {
-			/*
-			 * case 0: 
-			 * case 1:
-			 * case 2:
-			 * case 3:
-			 * case 4:
-			 * case 5:
-			 * case 6:
-			 * case 7:
-			 * case 8:
-			 * case 9:
-			 * case 10:
-			 */
-			case 0: // logging event
-				Library.loggingEventProcess();
-				break;
-			case 1: // checking for ready task
-				sm.schedulers[msg.destId].procCheckReadyTaskEvent(msg);
-				break;
-			case 2: // responding for checking task metadata
-				sm.taskEndEventProcess(msg);
-				break;
-			case 3:
-				sm.stealEventProcess(msg);
-				break;
-			case 4:
-				sm.taskDispatchEventProcess(msg);
-				break;
-			case 5:
-				sm.visualEvent();
-				break;
-			}
+				sm.schedulers[msg.destId].procWorkStealEvent(msg, sm.schedulers);
+			else if (msg.type.equals("request task"))
+				sm.schedulers[msg.destId].procReqTaskEvent(msg);
+			else if (msg.type.equals("send task"))
+				sm.schedulers[msg.destId].procRetReqTaskEvent(msg);
+			else if (msg.type.equals("request data"))
+				sm.schedulers[msg.destId].procReqDataEvent(msg);
+			else if (msg.type.equals("return req data"))
+				sm.schedulers[msg.destId].procRetReqDataEvent(msg);
+			else if (msg.type.equals("push task"))
+				sm.schedulers[msg.destId].procPushTaskEvent(msg);
+			else 
+				System.out.println("unknown event type!");
 		}
 		// Stop screen capture, create video from captures
 		// rec.record = false;
@@ -407,8 +405,8 @@ public class SimMatrix {
 		 * (Exception e) { e.printStackTrace(); }
 		 */
 		try {
-			Library.logBuffWriter.flush();
-			Library.logBuffWriter.close();
+			Library.summaryLogBW.flush();
+			Library.summaryLogBW.close();
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
