@@ -93,7 +93,7 @@ public class Library {
 
 	/* write to the summary log */
 	public static void summaryLogging() {
-		currentSimuTime = CentralSimulator.getSimuTime();
+		currentSimuTime = SimMatrix.getSimuTime();
 		numThread = Thread.activeCount();
 		numFreeCore = numAllCore - numBusyCore;
 		//waitQueueLength = readyTaskListSize;

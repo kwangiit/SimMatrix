@@ -144,12 +144,12 @@ public class SimMatrix {
 		Library.systemCPUSystem = "0";
 		Library.systemCPUIdle = "100";
 
-
+		Library.globalTaskHM = new HashMap<Integer, Task>();
 		/* counters */
 	}
 
 	/* initialization of the simulation environment */
-	public void initSimulation(String[] args) {
+	public void initSimulation(String[] args) throws IOException{
 		System.out.println("Initializing...");
 		initLibrary(args);
 		SimMatrix.setSimuTime(0.0);
@@ -166,15 +166,15 @@ public class SimMatrix {
 	}
 
 	/* initialization of the visualization window */
-	public void initVisualization() {
-		window = new JFrame("Visualization of Load");
-		canvas = new ModCanvas((int) Math.sqrt(Library.numComputeNode), this);
-		Container c = window.getContentPane();
-		c.add(canvas);
-		window.setVisible(true);
-		window.setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
-		window.pack();
-	}
+//	public void initVisualization() {
+//		window = new JFrame("Visualization of Load");
+//		canvas = new ModCanvas((int) Math.sqrt(Library.numComputeNode), this);
+//		Container c = window.getContentPane();
+//		c.add(canvas);
+//		window.setVisible(true);
+//		window.setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
+//		window.pack();
+//	}
 
 	/*
 	 * accept the submssion of tasks, either submitted by the client, or
@@ -332,7 +332,7 @@ public class SimMatrix {
 		System.out.println();
 	}
 
-	public static void main(String[] args) throws InterruptedException {
+	public static void main(String[] args) throws IOException, InterruptedException {
 		if (args.length != 1) {
 			System.out.println("Please specify the configuration file!");
 					//"Need three parameters: num_node, num_core_per_node, "
@@ -355,7 +355,7 @@ public class SimMatrix {
 		SimMatrix.add(logging);
 		
 		/*
-		 * first all the compute nodes check the waiting 
+		 * first all the compute nodes check the waiting tasks
 		 */
 		for (int i = 0; i < Library.numComputeNode; i++) {
 			sm.schedulers[i].localTime = SimMatrix.getSimuTime() + Math.random() * 0.001;
@@ -364,7 +364,7 @@ public class SimMatrix {
 		
 		for (int i = 0; i < Library.numComputeNode; i++) {
 			SimMatrix.add(new Message("work steal", -1, null, null, SimMatrix.getSimuTime() + 
-					Math.random() * 0.001, i, -2, Library.eventId++));
+					Math.random() * 0.001, -2, i, Library.eventId++));
 			sm.schedulers[i].ws = true;
 		}
 		/*
@@ -375,6 +375,7 @@ public class SimMatrix {
 		while (!SimMatrix.isEmpty() && Library.numTaskFinished != Library.numAllTask) {
 			// poll out the first event, and process according to event type
 			msg = SimMatrix.pollFirst();
+			//System.out.println(Library.numTaskFinished);
 			SimMatrix.setSimuTime(msg.occurTime);
 			if (msg.type.equals("logging"))
 				Library.procLoggingEvent();
@@ -382,6 +383,8 @@ public class SimMatrix {
 				sm.schedulers[msg.destId].procKVSEvent(msg);
 			else if (msg.type.equals("kvs return"))
 				sm.schedulers[msg.destId].procKVSRetEvent(msg);
+			else if (msg.type.equals("task done"))
+				sm.schedulers[msg.destId].procTaskDoneEvent(msg);
 			else if (msg.type.equals("work steal"))
 				sm.schedulers[msg.destId].procWorkStealEvent(msg, sm.schedulers);
 			else if (msg.type.equals("request task"))

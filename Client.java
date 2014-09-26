@@ -154,7 +154,7 @@ public class Client {
 	
 	public void splitTask(Scheduler[] schedulers) {
 		for (int i = 0; i < numTask; i++) {
-			int idx = i % Library.numComputeNode;
+			int idx = (int)(Math.random() * Library.numComputeNode);
 			schedulers[idx].waitTaskList.add(i);
 		}
 	}
