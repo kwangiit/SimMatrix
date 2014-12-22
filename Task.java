@@ -1,15 +1,24 @@
 import java.util.*;
+import java.io.Serializable;
 
-public class Task {
+@SuppressWarnings("serial")
+public class Task implements Serializable{
 	int taskId;
 	TaskMetaData taskMD;
 	int numParentDataRecv;
 	String data;
 	int numChildMDUpdated;
+	
+	int dataOutPutSize;
+	double submissionTime;
+	double readyTime;
+	double startExecTime;
+	double endTime;
 }
 
 
-class TaskMetaData {
+@SuppressWarnings("serial")
+class TaskMetaData implements Serializable {
 	int taskId;
 	int indegree;
 	ArrayList<Integer> parent;
@@ -95,10 +104,6 @@ class TaskMetaData {
 			for (int i = 0; i < parent.size(); i++) {
 				taskMD.parent.add(parent.get(i).intValue());
 			}
-			taskMD.children = new ArrayList<Integer>();
-			for (int i = 0; i < children.size(); i++) {
-				taskMD.children.add(children.get(i).intValue());
-			}
 			taskMD.dataNameList = new ArrayList<String>();
 			for (int i = 0; i < dataNameList.size(); i++) {
 				taskMD.dataNameList.add(dataNameList.get(i).substring(0));
@@ -108,15 +113,22 @@ class TaskMetaData {
 				taskMD.dataSize.add(dataSize.get(i).intValue());
 			}
 		}
+		if (children != null) {
+			taskMD.children = new ArrayList<Integer>();
+			for (int i = 0; i < children.size(); i++)
+				taskMD.children.add(children.get(i).intValue());
+		}
 		return taskMD;
 	}
 }
 
 
-class TaskDesc {
+@SuppressWarnings("serial")
+class TaskDesc implements Serializable{
 	int taskId;
-	String users;
-	String dir;
-	String cmd;
+	double taskLength;
+	//String users;
+	//String dir;
+	//String cmd;
 	int dataLength;
 }

@@ -77,6 +77,14 @@ public class SimMatrix {
 		Library.procTimePerKVSRequest = Double.parseDouble(configHM.get("ProcTimePerKVSRequest"));
 		
 		Library.taskLog = Boolean.parseBoolean(configHM.get("TaskLog"));
+		if (Library.taskLog) {
+			try {
+				Library.taskLogBW = new BufferedWriter(
+						new FileWriter("taskLogD_" + Library.numComputeNode));
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+		}
 		Library.eventId = 0;
 		Library.numTaskFinished = 0;
 		if (Library.numComputeNode == 1)
@@ -84,18 +92,15 @@ public class SimMatrix {
 		else
 			Library.numNeigh = (int) (Math.sqrt(Library.numComputeNode));
 
-		//Library.infoMsgSize = 100; // Bytes
-		//Library.stealMsgCommTime = (double) Library.infoMsgSize * 8 
-		//		/ (double) Library.networkBandwidth + Library.networkLatency;
-		//Library.numTaskSubmitted = 0;
 		Library.numMsg = 0;
 		Library.numWorkStealing = 0;
 		Library.numFailWorkStealing = 0;
 		Library.numStealTask = 0;
 		
-		Library.dataSizeThreshold = Integer.parseInt(configHM.get("DataSizeThreshold"));
+		Library.ratioThreshold = Double.parseDouble(configHM.get("RatioThreshold"));
 		Library.initPollInterval = Double.parseDouble(configHM.get("InitPollInterval"));
 		Library.pollIntervalUB = Double.parseDouble(configHM.get("PollIntervalUB"));
+		Library.target = new boolean[Library.numComputeNode];
 		
 		Library.logTimeInterval = Double.parseDouble(configHM.get("LogTimeInterval"));//1.0;
 		Library.visualTimeInterval = Double.parseDouble(configHM.get("VisualTimeInterval"));//0.5;
@@ -105,7 +110,6 @@ public class SimMatrix {
 		// equivalent to 20 frames per second
 		Library.screenCapMilInterval = Integer.parseInt(configHM.get("ScreenCapMilInterval"));//50;
 
-		
 		Library.numThread = 1;
 		Library.numAllCore = Library.numComputeNode * Library.numCorePerNode;
 		Library.numFreeCore = Library.numAllCore;
@@ -314,21 +318,16 @@ public class SimMatrix {
 
 	/* print the result */
 	public void outputResult(long start, long end) {
-		System.out.println("Number of compute node is:"
-				+ Library.numComputeNode);
-		System.out.println("Simulation time is:"
-				+ SimMatrix.getSimuTime());
-		throughput = (double) (Library.numAllTask)
-				/ SimMatrix.getSimuTime();
+		System.out.println("Number of compute node is:" + Library.numComputeNode);
+		System.out.println("Simulation time is:" + SimMatrix.getSimuTime());
+		throughput = (double) (Library.numAllTask)/ SimMatrix.getSimuTime();
 		System.out.println("Througput is:" + throughput);
-		System.out.println("Real CPU time is: " + (double) (end - start) / 1000
-				+ " s");
+		System.out.println("Real CPU time is: " + (double) (end - start) / 1000 + " s");
 		System.out.println("The final coefficient of variation is:" + coVari());
 		System.out.println("The number of Messages is:" + Library.numMsg);
-		System.out.println("The number of Work Stealing is:"
-				+ Library.numWorkStealing);
-		System.out.println("The number of fail Work Stealing is:"
-				+ Library.numFailWorkStealing);
+		System.out.println("The number of Work Stealing is:" + Library.numWorkStealing);
+		System.out.println("The number of fail Work Stealing is:" + Library.numFailWorkStealing);
+		System.out.println("The number of task migragated is:" + Library.numStealTask);
 		System.out.println();
 	}
 
@@ -347,6 +346,7 @@ public class SimMatrix {
 		sm.client.genDagIndegree();
 		sm.client.insertTaskMetaToKVS(sm.schedulers);
 		sm.client.splitTask(sm.schedulers);
+		//sm.client.printDAG();
 		//ds.client.submitTaskToDispatcher(DistributedSimulator.getSimuTime(), 0, false);
 		
 		// at the beginning, add a logging event
@@ -358,15 +358,15 @@ public class SimMatrix {
 		 * first all the compute nodes check the waiting tasks
 		 */
 		for (int i = 0; i < Library.numComputeNode; i++) {
-			sm.schedulers[i].localTime = SimMatrix.getSimuTime() + Math.random() * 0.001;
+			//sm.schedulers[i].localTime = SimMatrix.getSimuTime() + Math.random() * 0.001;
 			sm.schedulers[i].checkReadyTask();
 		}
 		
-		for (int i = 0; i < Library.numComputeNode; i++) {
+		/*for (int i = 0; i < Library.numComputeNode; i++) {
 			SimMatrix.add(new Message("work steal", -1, null, null, SimMatrix.getSimuTime() + 
 					Math.random() * 0.001, -2, i, Library.eventId++));
 			sm.schedulers[i].ws = true;
-		}
+		}*/
 		/*
 		 * DistributedSimulator.add(new Event((byte)5, -1,
 		 * DistributedSimulator.getSimuTime(), -1, -1, Library.eventId++));
@@ -375,7 +375,8 @@ public class SimMatrix {
 		while (!SimMatrix.isEmpty() && Library.numTaskFinished != Library.numAllTask) {
 			// poll out the first event, and process according to event type
 			msg = SimMatrix.pollFirst();
-			//System.out.println(Library.numTaskFinished);
+			if (msg.sourceId != msg.destId)
+				Library.numMsg++;
 			SimMatrix.setSimuTime(msg.occurTime);
 			if (msg.type.equals("logging"))
 				Library.procLoggingEvent();
@@ -397,6 +398,8 @@ public class SimMatrix {
 				sm.schedulers[msg.destId].procRetReqDataEvent(msg);
 			else if (msg.type.equals("push task"))
 				sm.schedulers[msg.destId].procPushTaskEvent(msg);
+			else if (msg.type.equals("return push task"))
+				sm.schedulers[msg.destId].procRetPushTaskEvent(msg);
 			else 
 				System.out.println("unknown event type!");
 		}
@@ -413,6 +416,7 @@ public class SimMatrix {
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
+		Library.procLoggingTaskEvent();
 		long end = System.currentTimeMillis();
 		sm.outputResult(start, end);
 		// TODO code application logic here

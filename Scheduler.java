@@ -19,7 +19,7 @@ public class Scheduler {
 	PriorityQueue<TaskDesc> sharedReadyTaskPQ;
 	LinkedList<Integer> completeTaskList;
 
-	boolean[] target;
+	//boolean[] target;
 	int[] neighId;
 	double pollInterval;
 	int maxLoad;
@@ -48,7 +48,7 @@ public class Scheduler {
 		localReadyTaskPQ = new PriorityQueue<TaskDesc>(new PQComparator());
 		sharedReadyTaskPQ = new PriorityQueue<TaskDesc>(new PQComparator());
 		completeTaskList = new LinkedList<Integer>();
-		target = new boolean[Library.numComputeNode];
+		//target = new boolean[Library.numComputeNode];
 		neighId = new int[Library.numNeigh];
 		pollInterval = Library.initPollInterval;
 		ws = false;
@@ -91,13 +91,13 @@ public class Scheduler {
 	
 	public int mapReadyTask(TaskMetaData taskMD, TaskDesc td) {
 		int flag = 2;
-		if (taskMD.allDataSize <= Library.dataSizeThreshold) {
+		if (taskMD.allDataSize * 8 / td.taskLength <= Library.ratioThreshold) {
 			td.dataLength = taskMD.allDataSize;
-			flag = 0;
+			flag = 1;
 		} else {
 			int maxDataSize = taskMD.dataSize.get(0);
-			int maxDataSchedId = -1;
-			String key = null;
+			int maxDataSchedId = taskMD.parent.get(0);
+			String key = taskMD.dataNameList.get(0);
 			for (int i = 1; i < taskMD.dataSize.size(); i++) {
 				if (taskMD.dataSize.get(i) > maxDataSize) {
 					maxDataSize = taskMD.dataSize.get(i);
@@ -106,12 +106,14 @@ public class Scheduler {
 				}
 			}
 			td.dataLength = maxDataSize;
-			if (maxDataSchedId == id)
+			if (maxDataSize * 8 / td.taskLength <= Library.ratioThreshold)
 				flag = 1;
+			else if (maxDataSchedId == id)
+				flag = 0;
 			else {
 				boolean taskPush = true;
 				if (dataHM.containsKey(key)) {
-					flag = 1;
+					flag = 0;
 					taskPush = false;
 				} else
 					taskPush = true;
@@ -128,8 +130,9 @@ public class Scheduler {
 	}
 	
 	public void executeTask(TaskDesc td) {
-		int taskId = td.taskId;
-		Pair pair = new Pair(taskId, null, null, td, "lookup", "metadata:execute task");
+		Task task = Library.globalTaskHM.get(td.taskId);
+		task.startExecTime = localTime;
+		Pair pair = new Pair(td.taskId, null, null, td, "lookup", "metadata:execute task");
 		kvsClientInteract(pair);
 	}
 	
@@ -155,12 +158,14 @@ public class Scheduler {
 			td = localReadyTaskPQ.poll();
 		} else if (sharedReadyTaskPQ.size() > 0) {
 			td = sharedReadyTaskPQ.poll();
-		} else if (!ws){
+		} else if (!ws && Library.numComputeNode > 1){
 			ws = true;
 			SimMatrix.add(new Message("work steal", -1, null, 
-					null, localTime, id, -2, Library.eventId++));
+					null, localTime, id, id, Library.eventId++));
 		}
 		if (td != null) {
+			Library.readyQueueLength--;
+			Library.numBusyCore++;
 			numIdleCore--;
 			executeTask(td);
 		}
@@ -171,15 +176,16 @@ public class Scheduler {
 		kvsClientInteract(pair);
 	}
 	
-	public void updateChildMetadata(int childTaskID, int taskID) {
-		Pair pair = new Pair(childTaskID, null, null, taskID, "lookup", "metadata:children task");
+	public void updateChildMetadata(int childTaskId, int taskId) {
+		Pair pair = new Pair(childTaskId, null, null, taskId, "lookup", "metadata:children task");
 		kvsClientInteract(pair);
 	}
 	
 	public void procRetNotifyChildEvent(KVSRetObj kvsRetObj) {
 		TaskMetaData tm = (TaskMetaData)kvsRetObj.value;
-		if (tm.children != null && tm.children.size() > 0)
+		if (tm.children != null && tm.children.size() > 0) {
 			updateChildMetadata(tm.children.get(0), tm.taskId);
+		}
 		else  {
 			completeTaskBusy = false;
 			if (completeTaskList.size() > 0) {
@@ -201,8 +207,9 @@ public class Scheduler {
 		}
 		childTaskMDAttempt.parent.add(id);
 		childTaskMDAttempt.dataNameList.add(kvsRetObj.identifier.toString());
-		childTaskMDAttempt.dataSize.add(1000000);
-		childTaskMDAttempt.allDataSize += 1000000;
+		Task task = Library.globalTaskHM.get(kvsRetObj.identifier);
+		childTaskMDAttempt.dataSize.add(task.dataOutPutSize);
+		childTaskMDAttempt.allDataSize += task.dataOutPutSize;
 		Pair pair = new Pair(childTaskMD.taskId, childTaskMD, childTaskMDAttempt, 
 				kvsRetObj.identifier, "compare and swap", kvsRetObj.forWhat);
 		kvsClientInteract(pair);
@@ -213,8 +220,9 @@ public class Scheduler {
 		task.numChildMDUpdated++;
 		if (task.numChildMDUpdated < task.taskMD.children.size())
 			updateChildMetadata(task.taskMD.children.get(task.numChildMDUpdated), task.taskId);
-		else { 
+		else {
 			completeTaskBusy = false;
+			//System.out.println("Now, process the next one!, the size is:" + completeTaskList.size());
 			if (completeTaskList.size() > 0) {
 				completeTaskBusy = true;
 				int taskId = completeTaskList.pollFirst();
@@ -224,32 +232,28 @@ public class Scheduler {
 	}
 	
 	public void actExecuteTask(TaskDesc td) {
-		//Library.numTaskFinished++;
-		localTime += Math.random() * Library.maxTaskLength;
+		localTime += td.taskLength;
 		Message msg = new Message("task done", td.taskId, 
 				null, td, localTime, id, id, Library.eventId);
 		SimMatrix.add(msg);
-		//numIdleCore++;
-		//tryExecAnotherTask();
-		//if (!completeTaskBusy){
-		//	completeTaskBusy = true;
-		//	notifyChildren(td.taskId);
-		//} else
-		//	completeTaskList.add(td.taskId);
 	}
 	
 	public void procTaskDoneEvent(Message msg) {
 		localTime = SimMatrix.getSimuTime();
-		numTaskFinished++;
 		Library.numTaskFinished++;
+		Library.numBusyCore--;
 		numIdleCore++;
+		numTaskFinished++;
 		dataHM.put(Integer.toString(msg.info), "This is the data!");
+		Task task = Library.globalTaskHM.get(msg.info);
+		task.endTime = localTime;
 		tryExecAnotherTask();
 		if (!completeTaskBusy){
 			completeTaskBusy = true;
 			notifyChildren(msg.info);
-		} else
+		} else {
 			completeTaskList.add(msg.info);
+		}
 	}
 	
 	public void getTaskData(int pos, TaskDesc td, Task task) {
@@ -293,17 +297,16 @@ public class Scheduler {
 		String data = dataHM.get(msg.content);
 		Message retMsg = new Message("return req data", msg.info, 
 				data, msg.obj, 0, id, msg.sourceId, Library.eventId++);
-		sendMsg(retMsg, schedMaxFwdTime + Library.getCommOverhead(1000000));
+		Task task = Library.globalTaskHM.get(Integer.parseInt(msg.content));
+		sendMsg(retMsg, schedMaxFwdTime + Library.getCommOverhead(task.dataOutPutSize));
 	}
 	
 	public void procRetExecuteTaskEvent(KVSRetObj kvsRetObj) {
 		TaskMetaData taskMD = (TaskMetaData)kvsRetObj.value;
-		Task task = new Task();
-		task.taskId = taskMD.taskId;
+		Task task = Library.globalTaskHM.get(taskMD.taskId);
 		task.taskMD = taskMD;
-		task.numParentDataRecv = 0;
-		task.data = new String();
-		task.numChildMDUpdated = 0;
+		if (task.data == null)
+			task.data = new String();
 		int i = 0;
 		TaskDesc td = (TaskDesc)(kvsRetObj.identifier);
 		getTaskData(i, td, task);
@@ -337,32 +340,55 @@ public class Scheduler {
 		else {
 			TaskDesc td = new TaskDesc();
 			td.taskId = taskMD.taskId;
+			td.dataLength = 0;
+			td.taskLength = Math.random() * Library.maxTaskLength;
+			Task task = new Task();
+			task.taskId = taskMD.taskId;
+			task.taskMD = taskMD;
+			task.numParentDataRecv = 0;
+			task.numChildMDUpdated = 0;
+			task.dataOutPutSize = (int)(Math.random() * (double)10000000);
+			task.submissionTime = 0.0;
+			task.readyTime = localTime;
+			task.startExecTime = 0.0;
+			task.endTime = 0.0;
+			Library.globalTaskHM.put(task.taskId, task);
+			
 			int flag = mapReadyTask(taskMD, td);
 			if (flag == 0 || flag == 1) {
 				if (numIdleCore > 0) {
-					System.out.println("Node:" + id + ", and numIdleCore is:" + numIdleCore);
+					Library.numBusyCore++;
 					numIdleCore--;
 					executeTask(td);
-				} else if (flag == 0) {
-					localReadyTaskPQ.add(td);
-					monitorLocalQueue();
-				} else
-					sharedReadyTaskPQ.add(td);
+				} else { 
+					Library.readyQueueLength++;
+					if (flag == 0) {
+						localReadyTaskPQ.add(td);
+						monitorLocalQueue();
+					} else
+						sharedReadyTaskPQ.add(td);
+				}
 				checkReadyTask();
 			}
 		}
-		//checkReadyTask();
 	}
 	
 	public void procPushTaskEvent(Message msg) {
 		schedMaxFwdTime = Library.updateTime(Library.unpackOverhead, schedMaxFwdTime);
+		schedMaxFwdTime = Library.updateTime(Library.packOverhead, schedMaxFwdTime);
+		Message retMsg = new Message("return push task", msg.info,
+				null, null, schedMaxFwdTime, id, msg.sourceId, Library.eventId++);
+		SimMatrix.add(retMsg);
 		localTime = schedMaxFwdTime;
 		TaskDesc td = (TaskDesc)msg.obj;
 		if (numIdleCore > 0) {
 			numIdleCore--;
+			Library.numBusyCore++;
 			executeTask(td);
-		} else
+		} else {
 			localReadyTaskPQ.add(td);
+			Library.readyQueueLength++;
+		}
 	}
 	
 	public void procRetPushTaskEvent(Message msg) {
@@ -412,7 +438,6 @@ public class Scheduler {
 	}
 	
 	public void procKVSRetEvent(Message msg) {
-		//schedMaxFwdTime = Library.updateTime(Library.unpackOverhead, schedMaxFwdTime);
 		localTime = SimMatrix.getSimuTime() + Library.unpackOverhead;
 		KVSRetObj kvsRetObj = (KVSRetObj)msg.obj;
 		if (!kvsRetObj.result) {
@@ -432,6 +457,7 @@ public class Scheduler {
 				} else if (kvsRetObj.forWhat.equals("metadata:execute task")) {
 					procRetExecuteTaskEvent(kvsRetObj);
 				} else if (kvsRetObj.forWhat.equals("metadata:notify children")){
+					TaskMetaData taskMD = (TaskMetaData)kvsRetObj.value;
 					procRetNotifyChildEvent(kvsRetObj);
 				} else if (kvsRetObj.forWhat.equals("metadata:children task")) {
 					procRetChildMDEvent(kvsRetObj);
@@ -452,10 +478,10 @@ public class Scheduler {
 			 * if the chosen node is itself, or has already been chosen, then
 			 * choose again
 			 */
-			while (neighId[i] == id || target[neighId[i]]) {
+			while (neighId[i] == id || Library.target[neighId[i]]) {
 				neighId[i] = (int) (Math.random() * Library.numComputeNode);
 			}
-			target[neighId[i]] = true;
+			Library.target[neighId[i]] = true;
 		}
 	}
 
@@ -465,7 +491,7 @@ public class Scheduler {
 	 */
 	public void resetTarget() {
 		for (int i = 0; i < Library.numNeigh; i++) {
-			target[neighId[i]] = false;
+			Library.target[neighId[i]] = false;
 		}
 	}
 
@@ -539,11 +565,11 @@ public class Scheduler {
 			pollInterval *= 2; // double the poll interval
 			if (pollInterval < Library.pollIntervalUB)
 			{
-				if (!ws)
+				if (!ws && Library.numComputeNode > 1)
 				{
 					ws = true;
 					Message workstealMsg = new Message("work steal", -1, null, null,
-							localTime + totalLat, id, -2, Library.eventId++);
+							localTime + totalLat, id, id, Library.eventId++);
 					SimMatrix.add(workstealMsg);
 				}
 			}
@@ -574,14 +600,15 @@ public class Scheduler {
 			while (taskList.size() > 0)
 				sharedReadyTaskPQ.add(taskList.poll());
 		} else {
+			Library.numFailWorkStealing++;
 			localTime += pollInterval;
 			pollInterval *= 2;
 			if (pollInterval < Library.pollIntervalUB) {
-				if (!ws)
+				if (!ws && Library.numComputeNode > 1)
 				{
 					ws = true;
 					Message workstealMsg = new Message("work steal", -1, null, 
-						null, localTime, id, -2, Library.eventId++);
+						null, localTime, id, id, Library.eventId++);
 					SimMatrix.add(workstealMsg);
 				}
 			}
@@ -595,6 +622,8 @@ public class Scheduler {
 		
 		int numTaskSent = sharedReadyTaskPQ.size() / 2;
 		if (numTaskSent > 0) {
+			numTaskSent += numTaskSent;
+			Library.numStealTask += numTaskSent;
 			LinkedList<TaskDesc> taskList = new LinkedList<TaskDesc>();
 			for (int i = 0; i < numTaskSent; i++)
 				taskList.add(sharedReadyTaskPQ.poll());
@@ -602,6 +631,6 @@ public class Scheduler {
 			sendTaskMsg.obj = taskList;
 		}
 		schedMaxFwdTime = Library.updateTime(Library.packOverhead, schedMaxFwdTime);
-		sendMsg(sendTaskMsg, localTime);
+		sendMsg(sendTaskMsg, schedMaxFwdTime);
 	}
 }

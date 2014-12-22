@@ -10,7 +10,8 @@
 import java.util.*;
 import java.io.Serializable;
 
-public class Message implements Comparable<Object> {
+@SuppressWarnings("serial")
+public class Message implements Comparable<Object>, Serializable {
 	String type;
 	int info;
 	String content;
@@ -51,7 +52,8 @@ public class Message implements Comparable<Object> {
 	}
 }
 
-class Pair {
+@SuppressWarnings("serial")
+class Pair implements Serializable{
 	Object key;
 	Object value;
 	Object attemptValue;

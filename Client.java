@@ -65,7 +65,7 @@ public class Client {
 		int next = - 1;
 		for (int i = 0; i < numTask; i++) {
 			ArrayList<Integer> newList = new ArrayList<Integer>();
-			for (int j = 0; j <= dagPara; j++) {
+			for (int j = 1; j <= dagPara; j++) {
 				next = i * dagPara + j;
 				if (next >= numTask)
 					break;
@@ -137,6 +137,7 @@ public class Client {
 					inDegree.put(existList.get(j), inDegree.get(existList.get(j)).intValue() + 1);
 			}
 		}
+		System.out.println("Task 0's indegree is:" + inDegree.get(0));
 	}
 	
 	public void insertTaskMetaToKVS(Scheduler[] schedulers) {
@@ -148,7 +149,9 @@ public class Client {
 			taskMD.indegree = inDegree.get(taskMD.taskId);
 			taskMD.children = entry.getValue();
 			int kvsServerId = Library.hashServer(taskMD.taskId);
+			
 			schedulers[kvsServerId].kvsHM.put(taskMD.taskId, taskMD);
+			//System.out.println(kvsServerId + "\t" + taskMD.taskId + "\t" + taskMD.children);
 		}
 	}
 	
@@ -156,6 +159,18 @@ public class Client {
 		for (int i = 0; i < numTask; i++) {
 			int idx = (int)(Math.random() * Library.numComputeNode);
 			schedulers[idx].waitTaskList.add(i);
+		}
+	}
+	
+	public void printDAG() {
+		for (int i = 0; i < numTask; i++) {
+			ArrayList<Integer> al = adjList.get(i);
+			System.out.print(i + ":\t");
+			if (al == null)
+				continue;
+			for (int j = 0; j < al.size(); j++)
+				System.out.print(al.get(j) + "\t");
+			System.out.println();
 		}
 	}
 }

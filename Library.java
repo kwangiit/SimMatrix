@@ -28,7 +28,7 @@ public class Library {
 	public static double singleMsgTransTime;
 	public static double packOverhead;
 	public static double unpackOverhead;
-	public static double stealMsgCommTime;
+	//public static double stealMsgCommTime;
 	
 	public static double procTimePerTask; // The processing time per job
 	public static double procTimePerKVSRequest;
@@ -44,11 +44,12 @@ public class Library {
 	public static long eventId;
 	public static int numTaskFinished;
 	public static long numMsg;
-	public static int dataSizeThreshold;
+	public static double ratioThreshold;
 	public static double localQueueTimeThreshold;
 	
 	public static int numNeigh;
-	public static double infoMsgSize;
+	//public static double infoMsgSize;
+	public static boolean target[];
 	public static double initPollInterval;
 	public static double pollIntervalUB;
 	public static long numStealTask;
@@ -121,7 +122,7 @@ public class Library {
 				+ cacheLocalHitRatio + " " + cacheGlobalHitRatio + " "
 				+ systemCPUUser + " " + systemCPUSystem + " " + systemCPUIdle
 				+ " " + Long.toString(jvmSize) + " "
-				+ Long.toString(jvmFreeSize) + " " + jvmMaxSize + "\r\n";
+				+ Long.toString(jvmFreeSize) + " " + jvmMaxSize + "\n";
 		try {
 			summaryLogBW.write(line);
 		} catch (IOException e) {
@@ -173,5 +174,27 @@ public class Library {
 				SimMatrix.getSimuTime() + Library.logTimeInterval,
 				-2, -2, Library.eventId++);
 		SimMatrix.add(logging);
+	}
+	
+	public static void procLoggingTaskEvent() {
+		if (Library.taskLog) {
+			try 
+			{
+				for (int i = 0; i < Library.numAllTask; i++) {
+					Task task = Library.globalTaskHM.get(i);
+					try{
+						taskLogBW.write(task.taskId + " " + task.dataOutPutSize + " " + 
+								task.submissionTime + " " + task.readyTime + " " + 
+								task.startExecTime + " " + task.endTime + "\n");
+					} catch (IOException e1) {
+						e1.printStackTrace();
+					}
+				}
+				taskLogBW.flush();
+				taskLogBW.close();
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+		}
 	}
 }
